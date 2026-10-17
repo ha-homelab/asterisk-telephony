@@ -46,6 +46,14 @@ def inventory(value):
         lines.update(assigned)
         if any(type(phone.get(key)) is not bool for key in ("online", "dnd", "autoanswer", "dnd_pending")):
             raise ValueError("Invalid handset state")
+        alert = phone.get("alert")
+        if alert is not None:
+            if (not isinstance(alert, dict) or not isinstance(alert.get("id"), str)
+                    or not re.fullmatch(r"[0-9a-f]{32}", alert["id"])
+                    or alert.get("kind") not in ("timer", "alarm") or alert.get("line") not in assigned
+                    or alert.get("state") not in ("starting", "ringing", "stopping", "ended", "unknown")
+                    or alert.get("reason") not in (None, "call_ended", "stopped", "not_observed")):
+                raise ValueError("Invalid or foreign alert identity")
         channels = phone.get("channels")
         if not isinstance(channels, list) or len(channels) > 32:
             raise ValueError("Invalid channel list")
@@ -77,6 +85,9 @@ def owned_channel(phone, line, answer=False):
     channel = channels[0]
     if answer and channel["state"] != "Ringing":
         raise ValueError("The selected line is not ringing")
+    alert = phone.get("alert")
+    if answer and alert and alert["state"] != "ended" and alert["line"] == line:
+        raise ValueError("Answer an alert physically, or use Stop alert")
     return {"line": line, "channel": channel["name"], "uniqueid": channel["uniqueid"]}
 
 

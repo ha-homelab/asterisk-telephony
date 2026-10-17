@@ -11,7 +11,7 @@ def label(number):
 
 
 async def async_setup_entry(hass, entry, async_add_entities):
-    await setup_entities(entry, async_add_entities, lambda c, p: [PhoneSelect(c, p, k, n) for k, n in (("line", "Line"), ("dial_number", "Dial destination"), ("alarm_destination", "Alarm sound"), ("timer_destination", "Timer sound"))])
+    await setup_entities(entry, async_add_entities, lambda c, p: [PhoneSelect(c, p, k, n) for k, n in (("line", "Line"), ("dial_number", "Dial destination"))])
 
 
 class PhoneSelect(PhoneEntity, SelectEntity):

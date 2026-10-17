@@ -24,10 +24,27 @@ schedule = module("schedule")
 def snapshot():
     return {"ami_fresh": True, "dial_allowlist": ["600", "630", "640"], "ring_allowlist": ["640"], "phones": [
         {"id": "201", "lines": ["201", "202"], "online": True, "dnd": False,
-         "autoanswer": False, "dnd_pending": False, "channels": []}]}
+         "autoanswer": False, "dnd_pending": False, "channels": [], "alert": None}]}
 
 
 class InventoryTests(unittest.TestCase):
+    def test_alert_requires_exact_identity_kind_line_and_known_state(self):
+        value = snapshot()
+        alert = {"id": "a" * 32, "kind": "timer", "line": "201", "state": "unknown", "reason": None}
+        value["phones"][0]["alert"] = alert
+        self.assertEqual(model.inventory(value), value)
+        for key, bad in (("id", "unsafe/id"), ("line", "999"), ("kind", "radio"), ("state", "maybe"), ("reason", "guessed answer")):
+            with self.subTest(key=key):
+                value["phones"][0]["alert"] = {**alert, key: bad}
+                with self.assertRaises(ValueError): model.inventory(value)
+
+    def test_automated_answer_refuses_active_alert(self):
+        phone = snapshot()["phones"][0]
+        phone["channels"] = [{"name": "PJSIP/201-00000001", "line": "201", "state": "Ringing", "uniqueid": "1.2"}]
+        phone["alert"] = {"id": "a" * 32, "kind": "alarm", "line": "201", "state": "ringing", "reason": None}
+        with self.assertRaises(ValueError): model.owned_channel(phone, "201", answer=True)
+        self.assertEqual(model.owned_channel(phone, "201")["uniqueid"], "1.2")
+
     def test_inventory_and_unique_physical_ownership(self):
         good = snapshot()
         self.assertEqual(model.inventory(good), good)
@@ -77,6 +94,7 @@ class ScheduleTests(unittest.TestCase):
         self.settings["alarm_enabled"] = True
         first = schedule.pending(self.settings, "201", self.now, self.start)
         self.assertEqual(len(first), 1)
+        self.assertEqual(first[0][0], "alarm")
         restored = schedule.validate_settings({"201": copy.deepcopy(self.settings)})["201"]
         self.assertEqual(schedule.pending(restored, "201", self.now + timedelta(seconds=1), self.start), [])
 
@@ -96,8 +114,10 @@ class ScheduleTests(unittest.TestCase):
     def test_timer_freezes_line_and_skips_expired_during_downtime(self):
         schedule.start_timer(self.settings, self.now)
         self.settings["line"] = "202"
+        self.settings["timer_destination"] = "701"  # Legacy storage is readable, but no audio is requested.
         due = self.now + timedelta(minutes=5)
         first = schedule.pending(self.settings, "201", due, self.start)
+        self.assertEqual(first[0][0], "timer")
         self.assertEqual(first[0][2], "201")
         self.assertEqual(schedule.pending(self.settings, "201", due, self.start), [])
         schedule.start_timer(self.settings, self.now)

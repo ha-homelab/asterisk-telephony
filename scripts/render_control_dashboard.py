@@ -9,9 +9,9 @@ import re
 
 DOMAIN = "cisco_phone_control"
 KEY_DOMAINS = {
-    **{key: "button" for key in ("dial", "answer", "hangup", "speaker", "send_message", "send_image", "timer_start", "timer_cancel")},
+    **{key: "button" for key in ("dial", "answer", "hangup", "speaker", "send_message", "send_image", "timer_start", "timer_cancel", "alert_stop")},
     **{key: "switch" for key in ("dnd", "autoanswer", "alarm_enabled", *(f"weekday_{n}" for n in range(7)))},
-    **{key: "select" for key in ("line", "dial_number", "alarm_destination", "timer_destination")},
+    **{key: "select" for key in ("line", "dial_number")},
     **{key: "text" for key in ("title", "message", "image_path")},
     "alarm_time": "time", "timer_minutes": "number", "call_status": "sensor",
     "timer_remaining": "sensor", "schedule_status": "sensor",
@@ -64,8 +64,9 @@ def render(mapping, baseline=None):
             {"type": "vertical-stack", "cards": [card("Calls and availability", ("call_status", "line", "dial_number", "dnd", "autoanswer")), buttons(("dial", "answer", "hangup", "speaker"))]},
             {"type": "vertical-stack", "cards": [card("Messages and images", ("title", "message", "image_path")), buttons(("send_message", "send_image")),
                 {"type": "markdown", "content": "Private PNG/JPEG files: `/config/phone-images` or `/media/phone-images`. Use the phone **Exit** key to dismiss a page. Speaker is a toggle; PBX DND and gateway auto-answer are separate from native phone settings."}]},
-            card("Recurring alarm", ("alarm_enabled", "alarm_time", "alarm_destination", *(f"weekday_{n}" for n in range(7)))),
-            {"type": "vertical-stack", "cards": [card("Countdown timer", ("timer_minutes", "timer_destination", "timer_remaining", "schedule_status")), buttons(("timer_start", "timer_cancel"))]},
+            card("Recurring alarm", ("alarm_enabled", "alarm_time", *(f"weekday_{n}" for n in range(7)))),
+            {"type": "vertical-stack", "cards": [card("Countdown timer and alert", ("timer_minutes", "timer_remaining", "schedule_status")), buttons(("timer_start", "timer_cancel", "alert_stop")),
+                {"type": "markdown", "content": "Timers and alarms keep ringing until you answer or reject on the phone, or press **Stop alert**. They never auto-answer or play audio. **Cancel timer** also stops its active timer alert; disabling an alarm stops its active alarm alert."}]},
         ]})
         privacy.extend(entities[key] for key in ("title", "message", "image_path", "timer_remaining"))
     return {"dashboard.json": dashboard, "cisco_phone_control_privacy.yaml": {"recorder": {"exclude": {"entities": privacy}}}, "entity-map.json": mapping}

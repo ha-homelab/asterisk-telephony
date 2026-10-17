@@ -26,6 +26,15 @@ class PhoneSensor(PhoneEntity, SensorEntity):
             deadline = self.settings.get("timer_deadline")
             return max(0, math.ceil(deadline - dt_util.utcnow().timestamp())) if deadline else 0
         if self.key == "schedule_status":
+            if not self.coordinator.last_update_success:
+                return "Gateway unavailable; alert status unknown"
+            alert = self.phone.get("alert")
+            if (not alert or alert["state"] == "ended") and self.settings.get("timer_deadline") is not None:
+                return self.settings["status"]
+            if alert:
+                reason = {"call_ended": "call ended", "stopped": "stopped", "not_observed": "not observed"}.get(alert.get("reason"))
+                suffix = f": {reason}" if alert["state"] == "ended" and reason else ""
+                return f"{alert['kind'].title()} {alert['state']}{suffix}"
             return self.settings["status"]
         if not self.phone["online"]:
             return "Offline"
@@ -33,3 +42,9 @@ class PhoneSensor(PhoneEntity, SensorEntity):
         if not channels:
             return "Idle"
         return "Ringing" if any(c["state"] == "Ringing" for c in channels) else "In use"
+
+    @property
+    def extra_state_attributes(self):
+        if self.key == "schedule_status" and self.phone and self.phone.get("alert"):
+            return {key: self.phone["alert"].get(key) for key in ("kind", "state", "reason")}
+        return None

@@ -32,7 +32,7 @@ def pending(settings, primary, now, started_at):
         occurrence = "timer:" + settings["timer_id"]
         settings["timer_deadline"] = None
         if now.timestamp() - deadline <= 20 and deadline >= started_at:
-            due.append((settings["timer_destination"], action_key(primary, occurrence), settings["timer_line"]))
+            due.append(("timer", action_key(primary, occurrence), settings["timer_line"]))
             settings["status"] = "Timer claimed"
         else:
             settings["status"] = "Timer missed while unavailable"
@@ -43,7 +43,7 @@ def pending(settings, primary, now, started_at):
             and minute == settings["alarm_time"] and settings.get("last_alarm") != occurrence):
         settings["last_alarm"] = occurrence
         if now.second <= 20 and minute_start >= started_at:
-            due.append((settings["alarm_destination"], action_key(primary, "alarm:" + occurrence), settings["line"]))
+            due.append(("alarm", action_key(primary, "alarm:" + occurrence), settings["line"]))
             settings["status"] = "Alarm claimed"
         else:
             settings["status"] = "Alarm missed while unavailable"

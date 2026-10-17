@@ -117,12 +117,89 @@ class PhoneRuntimeTests(unittest.IsolatedAsyncioTestCase):
             await self.c._tick(now)
         self.client.action.assert_not_awaited()
 
+    async def test_due_timer_requests_persistent_alert_without_audio(self):
+        from custom_components.cisco_phone_control.schedule import start_timer
+        now = datetime(2026, 10, 19, 10, 0, tzinfo=timezone.utc)
+        self.c._started_at = now.timestamp() - 1000
+        self.c.settings["201"].update(timer_minutes=1, timer_destination="701")
+        start_timer(self.c.settings["201"], now - timedelta(minutes=1))
+        with patch("custom_components.cisco_phone_control.coordinator.dt_util.now", return_value=now):
+            await self.c._tick(now)
+        args = self.client.action.await_args.args
+        self.assertEqual(args[:3], ("201", "alert", {"kind": "timer", "line": "201"}))
+        self.assertTrue(args[3].startswith("ha-schedule-"))
+
+    async def test_stop_alert_uses_fresh_id_even_after_selected_line_changes(self):
+        self.c.settings["201"]["line"] = "202"
+        self.data["phones"][0]["alert"] = {"id": "b" * 32, "kind": "timer", "line": "201", "state": "unknown", "reason": None}
+        await self.c.stop_alert("201")
+        self.client.action.assert_awaited_once_with("201", "alert_stop", {"alert_id": "b" * 32}, None)
+
+    async def test_cancel_timer_and_disable_alarm_stop_only_matching_kind(self):
+        self.data["phones"][0]["alert"] = {"id": "a" * 32, "kind": "alarm", "line": "201", "state": "ringing", "reason": None}
+        self.c.settings["201"]["timer_deadline"] = 9999999999
+        await self.c.timer("201", False)
+        self.assertIsNone(self.c.settings["201"]["timer_deadline"])
+        self.client.action.assert_not_awaited()
+        await self.c.configure("201", "alarm_enabled", False)
+        self.client.action.assert_awaited_once_with("201", "alert_stop", {"alert_id": "a" * 32}, None)
+        self.client.action.reset_mock()
+        self.data["phones"][0]["alert"]["kind"] = "timer"
+        await self.c.configure("201", "alarm_enabled", False)
+        self.client.action.assert_not_awaited()
+        await self.c.timer("201", False)
+        self.client.action.assert_awaited_once_with("201", "alert_stop", {"alert_id": "a" * 32}, None)
+
+    async def test_unknown_or_active_alert_blocks_new_alert_without_retry(self):
+        from homeassistant.exceptions import HomeAssistantError
+        for state in ("starting", "ringing", "stopping", "unknown"):
+            self.data["phones"][0]["alert"] = {"id": "a" * 32, "kind": "alarm", "line": "201", "state": state, "reason": None}
+            with self.assertRaises(HomeAssistantError):
+                await self.c.perform("201", "alert", {"kind": "timer", "line": "201"})
+        self.client.action.assert_not_awaited()
+
+    async def test_cancel_persists_pending_removal_if_gateway_is_unavailable(self):
+        from custom_components.cisco_phone_control.api import GatewayError
+        from homeassistant.exceptions import HomeAssistantError
+        self.c.settings["201"]["timer_deadline"] = 9999999999
+        self.client.snapshot.side_effect = GatewayError("unavailable")
+        with self.assertRaises(HomeAssistantError): await self.c.timer("201", False)
+        self.assertIsNone(self.c.store.async_save.await_args.args[0]["phones"]["201"]["timer_deadline"])
+        self.client.action.assert_not_awaited()
+
+    async def test_stop_and_local_cancellation_controls_remain_available_offline(self):
+        from custom_components.cisco_phone_control.button import PhoneButton
+        from custom_components.cisco_phone_control.switch import PhoneSwitch
+        self.c.data["phones"][0]["online"] = False
+        stop = PhoneButton(self.c, "201", "alert_stop", "Stop alert")
+        cancel = PhoneButton(self.c, "201", "timer_cancel", "Cancel timer")
+        enabled = PhoneSwitch(self.c, "201", "alarm_enabled", "Alarm enabled")
+        self.assertTrue(stop.available)
+        self.assertTrue(cancel.available)
+        self.assertTrue(enabled.available)
+        self.c.last_update_success = False
+        self.assertFalse(stop.available)
+        self.assertTrue(cancel.available)
+        self.assertTrue(enabled.available)
+
+    async def test_schedule_status_tracks_live_alert_and_unknown_gateway(self):
+        from custom_components.cisco_phone_control.sensor import PhoneSensor
+        sensor = PhoneSensor(self.c, "201", "schedule_status", "Schedule status")
+        self.c.data["phones"][0]["alert"] = {"id": "a" * 32, "kind": "alarm", "line": "201", "state": "ringing", "reason": None}
+        self.assertEqual(sensor.native_value, "Alarm ringing")
+        self.c.data["phones"][0]["alert"].update(state="ended", reason="call_ended")
+        self.assertEqual(sensor.native_value, "Alarm ended: call ended")
+        self.c.settings["201"].update(timer_deadline=9999999999, status="Timer running")
+        self.assertEqual(sensor.native_value, "Timer running")
+        self.c.last_update_success = False
+        self.assertEqual(sensor.native_value, "Gateway unavailable; alert status unknown")
+
     async def test_all_platforms_real_ha_state_and_dynamic_addition(self):
         from custom_components.cisco_phone_control import button, switch, select, text, time, sensor, number
         collected = []
         for platform in (button, switch, select, text, time, sensor, number):
             await platform.async_setup_entry(self.hass, self.entry, collected.extend)
-        self.assertEqual(len(collected), 30)
+        self.assertEqual(len(collected), 29)
         self.assertEqual(len({e.unique_id for e in collected}), len(collected))
         for index, entity in enumerate(collected):
             entity.hass = self.hass
@@ -136,8 +213,8 @@ class PhoneRuntimeTests(unittest.IsolatedAsyncioTestCase):
         self.data["phones"].append(extra)
         self.c.prepare_inventory(self.data)
         self.c.async_set_updated_data(copy.deepcopy(self.data))
-        self.assertEqual(len(collected), 60)
-        self.assertEqual(len({e.unique_id for e in collected}), 60)
+        self.assertEqual(len(collected), 58)
+        self.assertEqual(len({e.unique_id for e in collected}), 58)
 
     async def test_config_flow_validates_gateway_and_hides_token(self):
         from custom_components.cisco_phone_control.config_flow import CiscoPhoneConfigFlow
@@ -162,13 +239,21 @@ class PhoneRuntimeTests(unittest.IsolatedAsyncioTestCase):
         for registry in (floor_registry, label_registry, area_registry, device_registry, entity_registry, issue_registry):
             await registry.async_load(self.hass, load_empty=True)
         self.hass.config_entries._entries[self.entry.entry_id] = self.entry
+        registry = entity_registry.async_get(self.hass)
+        obsolete = [registry.async_get_or_create("select", DOMAIN, f"{self.entry.entry_id}:201:{key}", config_entry=self.entry).entity_id
+                    for key in ("alarm_destination", "timer_destination")]
+        unrelated = registry.async_get_or_create("select", "unrelated", "keep-this-selector").entity_id
+        unrelated_owned_key = registry.async_get_or_create("select", DOMAIN, f"{self.entry.entry_id}:999:alarm_destination", config_entry=self.entry).entity_id
         with patch("custom_components.cisco_phone_control.GatewayClient", return_value=self.client), patch("custom_components.cisco_phone_control.async_get_clientsession", return_value=None):
             self.assertTrue(await async_setup_component(self.hass, DOMAIN, {}))
             from homeassistant.config_entries import ConfigEntryState
             self.assertEqual(self.entry.state, ConfigEntryState.LOADED)
             await self.hass.async_block_till_done()
+        self.assertTrue(all(registry.async_get(entity) is None for entity in obsolete))
+        self.assertIsNotNone(registry.async_get(unrelated))
+        self.assertIsNotNone(registry.async_get(unrelated_owned_key))
         owned = [s for s in self.hass.states.async_all() if s.entity_id.startswith(("button.cisco_201", "switch.cisco_201", "select.cisco_201", "text.cisco_201", "time.cisco_201", "number.cisco_201", "sensor.cisco_201"))]
-        self.assertEqual(len(owned), 30)
+        self.assertEqual(len(owned), 29)
         self.assertTrue(await self.hass.config_entries.async_unload(self.entry.entry_id))
 
 

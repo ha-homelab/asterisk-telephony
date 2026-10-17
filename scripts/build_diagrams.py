@@ -41,7 +41,7 @@ def scenes():
     controls=box('Home Assistant UI\ncontrols + schedules',50,180,w=330,h=150)+box('Private phone gateway\nsource + bearer checks',475,180,w=330,h=150,color=GOLD)+box('Cisco 7945G handset\nprimary + secondary line',900,180,w=330,h=150,color=CORAL)
     controls+=arrow(380,255,475,255)+t('HTTP API',428,230,17,TEAL,'middle')
     controls+=arrow(805,255,900,255,CORAL)+t('Cisco XML',852,230,17,CORAL,'middle')
-    controls+=box('HA schedule storage\nclaim before sending\nnever replay missed alarms',50,445,w=330,h=150)+box('Asterisk AMI state\nexact channel ownership\nPBX DND + bounded calls',475,445,w=330,h=150,color=GOLD)+box('Private image folders\nlocal PNG / JPEG only\nno URL fetch or symlinks',900,445,w=330,h=150,color=CORAL)
+    controls+=box('HA schedule storage\nclaim before sending\nnever replay missed alarms',50,445,w=330,h=150)+box('Asterisk AMI state\nexact channel ownership\nPBX DND + explicit alert stop',475,445,w=330,h=150,color=GOLD)+box('Private image folders\nlocal PNG / JPEG only\nno URL fetch or symlinks',900,445,w=330,h=150,color=CORAL)
     controls+=arrow(215,330,215,445)+arrow(640,330,640,445,GOLD,both=True)
     controls+=t('Existing SIP audio, Asterisk entities and native Assist pipelines remain independent.',50,670,22,MUTED)
     controls+=t('Message inputs require actual Recorder exclusions. Secrets and household state stay private.',50,710,21,MUTED)

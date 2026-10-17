@@ -4,7 +4,8 @@ from homeassistant.components.button import ButtonEntity
 from .entity import PhoneEntity, setup_entities
 
 ACTIONS = {"dial": "Dial", "answer": "Answer", "hangup": "Hang up", "speaker": "Speaker / dial tone toggle",
-           "send_message": "Send message", "send_image": "Send image", "timer_start": "Start timer", "timer_cancel": "Cancel timer"}
+           "send_message": "Send message", "send_image": "Send image", "timer_start": "Start timer", "timer_cancel": "Cancel timer",
+           "alert_stop": "Stop alert"}
 
 
 async def async_setup_entry(hass, entry, async_add_entities):
@@ -20,7 +21,9 @@ class PhoneButton(PhoneEntity, ButtonEntity):
 
     async def async_press(self):
         c, p, key = self.coordinator, self.primary, self.key
-        if key.startswith("timer_"):
+        if key == "alert_stop":
+            await c.stop_alert(p)
+        elif key.startswith("timer_"):
             await c.timer(p, key == "timer_start")
         elif key == "send_message":
             inputs = c.inputs[p]

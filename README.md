@@ -8,7 +8,7 @@ This project uses the existing
 version **1.0.5**. It adds a verifiable installer, a local configuration
 generator, examples, documentation, and SVG diagrams. Upstream source code
 is not redistributed here. The included **Cisco Phone Control** integration
-adds a separate configuration flow and 30 entities per physical phone through
+adds a separate configuration flow and 29 entities per physical phone through
 the authenticated local [phone gateway](https://github.com/4alvit/cisco-home-telephony/blob/main/docs/phone-gateway.md).
 See [installation and handset controls](docs/phone-controls.md).
 

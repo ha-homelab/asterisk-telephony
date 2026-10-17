@@ -4,6 +4,7 @@ import voluptuous as vol
 from homeassistant.config_entries import ConfigEntryState
 from homeassistant.exceptions import HomeAssistantError
 from homeassistant.helpers import config_validation as cv
+from homeassistant.helpers import entity_registry as er
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
 from homeassistant.helpers.service import async_register_admin_service
 
@@ -40,6 +41,15 @@ async def async_setup_entry(hass, entry):
     coordinator = PhoneCoordinator(hass, entry, GatewayClient(async_get_clientsession(hass), entry.data["url"], entry.data["token"]))
     await coordinator.async_initialize()
     entry.runtime_data = coordinator
+    # Remove only this entry's obsolete sound selectors, preserving all other
+    # registry records and identities. Legacy stored settings remain readable.
+    registry = er.async_get(hass)
+    obsolete = {f"{entry.entry_id}:{phone['id']}:{key}"
+                for phone in coordinator.data["phones"]
+                for key in ("alarm_destination", "timer_destination")}
+    for record in list(er.async_entries_for_config_entry(registry, entry.entry_id)):
+        if record.platform == DOMAIN and record.domain == "select" and record.unique_id in obsolete:
+            registry.async_remove(record.entity_id)
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
     return True
 

@@ -72,6 +72,8 @@ class PhoneCoordinator(DataUpdateCoordinator):
             self.settings[primary][key] = value
             await self._save()
         self.async_update_listeners()
+        if key == "alarm_enabled" and value is False:
+            await self.stop_alert(primary, kind="alarm")
 
     async def timer(self, primary, start):
         async with self._settings_lock:
@@ -83,6 +85,12 @@ class PhoneCoordinator(DataUpdateCoordinator):
                 settings["status"] = "Timer cancelled"
             await self._save()
         self.async_update_listeners()
+        if not start:
+            await self.stop_alert(primary, kind="timer")
+
+    async def stop_alert(self, primary, kind=None):
+        """Resolve the latest alert at the gateway; never guess from a selected line."""
+        return await self.perform(primary, "alert_stop", {"kind_filter": kind})
 
     async def _tick(self, _now):
         if self._closing or self._settings_lock.locked():
@@ -102,10 +110,10 @@ class PhoneCoordinator(DataUpdateCoordinator):
                         settings["status"] = "Storage unavailable; notification not sent"
                         _LOGGER.error("Cannot persist Cisco schedule claim; no call was sent")
                         continue
-                for destination, key, line in actions:
+                for kind, key, line in actions:
                     try:
-                        await self.perform(primary, "ring", {"destination": destination, "line": line}, key)
-                        settings["status"] = "Notification accepted"
+                        await self.perform(primary, "alert", {"kind": kind, "line": line}, key)
+                        settings["status"] = "Alert accepted"
                     except HomeAssistantError:
                         settings["status"] = "Notification refused or outcome unknown; no retry"
                     if self._closing:
@@ -129,9 +137,24 @@ class PhoneCoordinator(DataUpdateCoordinator):
                     raise HomeAssistantError("Handset is no longer present at the gateway")
                 values = dict(values or {})
                 line = values.get("line", self.settings[primary]["line"])
-                if line not in phone["lines"]:
+                if action != "alert_stop" and line not in phone["lines"]:
                     raise HomeAssistantError("Selected line does not belong to this handset")
-                if action in ("answer", "hangup"):
+                if action == "alert_stop":
+                    if "alert" not in phone:
+                        raise HomeAssistantError("Upgrade the gateway to support persistent alerts")
+                    alert = phone["alert"]
+                    if not alert or alert["state"] == "ended" or values.get("kind_filter") not in (None, alert["kind"]):
+                        return {"status": "not_active"}
+                    values = {"alert_id": alert["id"]}
+                elif action == "alert":
+                    if "alert" not in phone:
+                        raise HomeAssistantError("Upgrade the gateway to support persistent alerts")
+                    if phone["alert"] and phone["alert"]["state"] != "ended":
+                        raise HomeAssistantError("An alert is already active or its outcome is unknown")
+                    if values.get("kind") not in ("timer", "alarm"):
+                        raise HomeAssistantError("Invalid scheduled alert kind")
+                    values = {"kind": values["kind"], "line": line}
+                elif action in ("answer", "hangup"):
                     values = owned_channel(phone, line, answer=action == "answer")
                 elif action in ("dial", "ring"):
                     values["line"] = line
