@@ -58,6 +58,13 @@ ASTERISK_UPSTREAM_ROOT="$PWD/.local/runtime-upstream" \
 
 ## Что требует приёмки дома
 
+Серверный этап выполнен 17 октября 2026 на HA 2026.10.0: Asterisk/VoIP загружены,
+AMI проверен из контейнера HA, панель состояния добавлена. Это отдельная
+[проверка реальной системы](https://github.com/4alvit/cisco-home-telephony/blob/main/docs/server-validation.md),
+а не результат mock-тестов этого файла. Актуальные дополнительные проверки
+AMI-пробника и обеих версий HA прошли в
+[CI commit 7c04416](https://github.com/ha-homelab/asterisk-telephony/actions/runs/39029938171).
+
 После установки проверяют AMI reconnect, обновление состояний при регистрации и
 отключении телефона, входящий/исходящий звонок, hold/hangup и реальные направления
 DTMF. `ConnectedLineNum` в upstream определяет датчик, поэтому его привязку к
