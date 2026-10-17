@@ -86,3 +86,13 @@ For rollback, disable pending alarms/timers first, unload/remove only this integ
 ```
 
 These are synthetic tests, not a claim that any live handset answered an alarm. The implementation uses Home Assistant's [coordinator pattern](https://developers.home-assistant.io/docs/integration_fetching_data/) and [config-entry flow](https://developers.home-assistant.io/docs/config_entries_config_flow_handler/). Record live acceptance separately from code validation.
+
+## Live deployment acceptance — October 17, 2026
+
+The integration was installed on HA 2026.10.0 and verified after the controlled restart reached `RUNNING`. The actual registry contained **120 new control entities across four handsets**, with four dashboard tabs added without replacing existing views. All **6,468 pre-existing registry identities**, including **16 native VoIP entities**, were preserved; automation enabled states and the reviewed configuration hashes matched. All eight SIP contacts were available at the final validation.
+
+Recorder exclusions increased from 67 to **83**, preserving the original entries and adding the actual text and countdown entity IDs. All **12 live text privacy gates** passed by submitting their unchanged, nonsensitive initial values through HA. This exercised the running Recorder filter rather than relying only on a configuration-file check.
+
+End-to-end **timer, recurring alarm, and HA `send_message` / `send_image` service acceptance remains deferred at the user's request**. These capabilities have synthetic test coverage, but that does not establish live delivery or audible alarm acceptance. The interrupted timer trial must not be recorded as a successful alarm call.
+
+Cleanup was verified from the saved live results: the test helper exited, the pending timer was canceled with zero remaining time, the alarm was off, and the original line, timer sound, duration and alarm-enabled settings were restored. Asterisk reported **zero active channels**. No further call or screen tests were performed after the stop request. Detailed receipts remain private.
