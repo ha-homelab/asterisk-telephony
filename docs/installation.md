@@ -1,20 +1,20 @@
-# Закреплённая установка
+# Pinned installation
 
-## Что устанавливается
+## What gets installed
 
-`upstream.lock.json` закрепляет исходный ZIP
-`TECH7Fox/asterisk-hass-integration` на commit
+`upstream.lock.json` pins the source ZIP for
+`TECH7Fox/asterisk-hass-integration` to commit
 `65ea9d637a58d6edb3b2bc9e8a6f90de896a9b3e`, manifest version `1.0.5`.
 SHA-256:
 `697792a522eb90db62672ff57bc0b03bec4caba45c0748583bdd32768e6dcad1`.
-Это контроль выбранного архива, не криптографическая подпись автора. Upstream
-может перегенерировать ZIP: несовпадение требует проверки источника и файлов,
-а не автоматического принятия нового хеша. [Происхождение](sources.md).
+This verifies the selected archive; it is not the author's cryptographic
+signature. Upstream may regenerate the ZIP. A mismatch requires checking the
+source and files, not automatically accepting a new hash. [Provenance](sources.md).
 
-Установщик использует только HTTPS GitHub/codeload, ограничивает размер архива,
-проверяет SHA-256 до распаковки, отклоняет traversal, symlink и дубли имён,
-извлекает только `custom_components/asterisk`, сверяет domain и version.
-По умолчанию он не касается работающего HA.
+The installer uses only GitHub/codeload over HTTPS, limits archive size, checks
+SHA-256 before extraction, rejects path traversal, symlinks, and duplicate names,
+extracts only `custom_components/asterisk`, and verifies the domain and version.
+By default, it does not touch the running HA instance.
 
 ## Staging
 
@@ -22,27 +22,27 @@ SHA-256:
 python3 scripts/stage_integration.py --stage .local/upstream-stage
 ```
 
-Результат: `.local/upstream-stage/custom_components/asterisk/`.
-Для заранее загруженного архива:
+Output: `.local/upstream-stage/custom_components/asterisk/`.
+For an archive downloaded in advance:
 
 ```bash
 python3 scripts/stage_integration.py \
   --archive .local/upstream.zip --stage .local/upstream-stage-offline
 ```
 
-SHA-256 и размер проверяются также в offline-режиме. Не загружайте архив или
-распакованный компонент в этот public-репозиторий. Существующий staging не
-перезаписывается: используйте новый путь.
+SHA-256 and size are checked in offline mode too. Do not upload the archive or
+extracted component to this public repository. Existing staging directories are
+not overwritten; choose a new path.
 
-## Установка в доступный локально /config
+## Installing into a locally accessible /config
 
-1. Создайте backup HA, включая `.storage`, и сохраните текущий каталог
-   `custom_components/asterisk`, если он есть.
-2. Остановите HA на время замены файлов. В HA Container используйте привычный
-   способ управления контейнером, в k3s — инструкцию следующего документа.
-3. Если интеграцией уже управляет HACS, обновляйте её через HACS. Не смешивайте
-   владельцев одного каталога.
-4. Для чистой установки укажите реальный существующий каталог конфигурации:
+1. Back up HA, including `.storage`, and preserve the current
+   `custom_components/asterisk` directory if it exists.
+2. Stop HA while replacing files. For HA Container, use your usual container
+   management procedure; for k3s, use the accompanying container instructions.
+3. If HACS already manages the integration, update it through HACS. Do not let
+   two installers manage the same directory.
+4. For a fresh installation, supply the actual existing configuration directory:
 
 ```bash
 python3 scripts/stage_integration.py \
@@ -50,26 +50,29 @@ python3 scripts/stage_integration.py \
   --install-to /absolute/path/to/ha-config --apply
 ```
 
-Без `--apply` даже при `--install-to` выполняются лишь staging и проверки.
-Скрипт требует `configuration.yaml`, отклоняет symlink в пути и отказывается
-перезаписывать установленную интеграцию. На macOS `/tmp` и `/var` могут быть
-системными symlink: используйте канонический путь. Права новых файлов — `0600`,
-каталогов — `0700`; запускайте от владельца HA config либо приведите владельца
-к UID/GID контейнера перед стартом. Не делайте config доступным всем пользователям.
-5. Выполните проверку конфигурации и запустите HA. В Settings → Devices & services
-   добавьте **Asterisk**, укажите LAN/VPN адрес PBX, порт `5038`, AMI username и
-   password из приватного хранилища. SIP-пароль телефона сюда не подходит.
+Without `--apply`, even `--install-to` only stages and validates files.
+The script requires `configuration.yaml`, rejects symlinks in the path, and
+refuses to overwrite an installed integration. On macOS, `/tmp` and `/var` may
+be system symlinks; use the canonical path. New files use mode `0600` and
+directories use `0700`. Run as the owner of the HA configuration, or set ownership
+to the container's UID/GID before starting it. Do not make the configuration
+readable by everyone.
 
-Интеграция при первом запуске может устанавливать Python-зависимости из своего
-manifest; учитывайте доступ HA к package registry. Установщик этого репозитория
-не исполняет код скачанного компонента.
+5. Check the configuration and start HA. In Settings → Devices & services,
+   add **Asterisk** and enter the PBX LAN/VPN address, port `5038`, and the AMI
+   username and password from private storage. The phone's SIP password is
+   not the AMI password.
 
-## Откат
+On first startup, the integration may install Python dependencies listed in
+its manifest; account for HA's access to the package registry. This repository's
+installer does not execute the downloaded component's code.
 
-Сохраните текущую `.storage` и остановите HA. Переместите новый компонент в
-локальный quarantine-каталог, восстановите ранее сохранённый каталог версии,
-согласованной с вашим HA, проверьте конфигурацию и запустите HA. Не удаляйте
-config entry и entity registry как первый шаг: это может нарушить mapping.
-Пакеты и dashboard откатываются отдельно к предыдущим файлам.
+## Rollback
 
-![Порядок установки](diagrams/installation.svg)
+Preserve the current `.storage` and stop HA. Move the new component to a local
+quarantine directory, restore the previously saved version compatible with
+your HA, check the configuration, and start HA. Do not delete the config entry
+or entity registry as a first step: this may break the mapping. Roll back
+packages and the dashboard separately using their previous files.
+
+![Installation sequence](diagrams/installation.svg)

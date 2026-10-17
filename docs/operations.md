@@ -1,61 +1,67 @@
-# Эксплуатация и диагностика
+# Operations and troubleshooting
 
-## Перед обновлением
+## Before updating
 
-Сохраните версию HA, `manifest.json` Asterisk integration, commit/hash из lock,
-backup HA config вместе с `.storage`, предыдущие packages/dashboard и приватный
-entity mapping. Устанавливайте изменение сначала в тестовый HA. Затем повторите
-[приёмку](acceptance.md), особенно DTMF mapping и текущий Channel для Hangup.
-Автоматический upstream update не должен незаметно менять закреплённый installer.
+Save the HA version, the Asterisk integration's `manifest.json`, the locked
+commit and hash, a backup of HA configuration including `.storage`, the previous
+packages and dashboard, and the private entity mapping. Install changes in a
+test HA instance first. Then repeat [acceptance testing](acceptance.md), especially
+DTMF mapping and the current Channel used for Hangup. Automatic upstream updates
+must not silently override the pinned installation.
 
-Новая версия upstream требует просмотра diff, нового commit/ZIP SHA-256,
-обновлённого `upstream.lock.json` и теста staging. Не исправляйте checksum только
-потому, что загрузка перестала проходить. GitHub-generated ZIP иногда меняется
-при повторном архивировании; подтвердите дерево исходников и происхождение.
+A new upstream version requires a diff review, a new commit and ZIP SHA-256,
+an updated `upstream.lock.json`, and a staging test. Do not change the checksum
+just because a download stopped validating. GitHub-generated ZIP files can
+change when regenerated; confirm the source tree and provenance.
 
-## Симптомы
+## Symptoms
 
-**Integration не подключается.** Проверьте адрес и TCP5038 с HA-узла, source IP
-после SNAT, точный `/32` в ACL, отдельный AMI secret и Asterisk logs. Для сетевого
-теста достаточно проверки TCP без передачи пароля. Не выводите secret через
-командную строку, историю shell, `kubectl describe` или общий log.
-Для проверки входа, версии, PJSIP discovery и запрета CLI из контейнера HA
-используйте [AMI-пробник с передачей пароля через stdin](ami-verification.md).
+**The integration does not connect.** Check the address and TCP5038 from the
+HA host, the source IP after SNAT, the exact `/32` ACL, the dedicated AMI secret,
+and Asterisk logs. A TCP connection check without sending the password is
+enough to test basic network reachability. Do not expose the secret in command
+arguments, shell history, `kubectl describe`, or shared logs. To verify login,
+version, PJSIP discovery, and denied CLI access from the HA container, use the
+[AMI probe with its password supplied through stdin](ami-verification.md).
 
-**HA подключился, сущностей нет.** Проверьте `PJSIPShowEndpoints` и права discovery,
-наличие PJSIP endpoint до загрузки integration. Эта версия перечисляет устройства
-при setup, поэтому после добавления endpoint на PBX reload/restart integration
-может быть необходим. Ошибка `SIPpeers` допустима для PBX только с PJSIP, если
-последующее перечисление PJSIP проходит. Не добавляйте `write=all` как общий fix.
+**HA connects but has no entities.** Check `PJSIPShowEndpoints`, discovery
+permissions, and that the PJSIP endpoints existed before the integration loaded.
+This version enumerates devices during setup, so adding an endpoint on the PBX
+may require reloading or restarting the integration. A `SIPpeers` error is
+expected on a PJSIP-only PBX if subsequent PJSIP discovery succeeds. Do not use
+`write=all` as a general fix.
 
-**Registered отличается от `pjsip show contacts`.** Оно вычисляется по DeviceState.
-Считайте PBX исходным источником регистрации и сопоставьте AMI events. Это не
-система учёта SIP REGISTER. После потери AMI проверьте свежесть данных, а не
-только зелёный значок последнего сохранённого state.
+**Registered differs from `pjsip show contacts`.** It is derived from DeviceState.
+Use the PBX as the registration source of truth and compare AMI events. This is
+not a SIP REGISTER audit system. After losing AMI, verify fresh data rather
+than relying on the last saved state shown by a green icon.
 
-**Originate не работает.** На PBX нужен `allow_originate:true`; проверьте context,
-наличие целевого extension и доступность исходного телефона. Сначала ответьте на
-звонок исходного аппарата: только потом Asterisk соединяет destination.
+**Originate does not work.** The PBX needs `allow_originate:true`. Check the
+context, the destination extension, and source phone availability. Answer the
+source phone first; only then does Asterisk connect the destination.
 
-**Hangup ничего не делает.** Это нормально для idle, ringing, чужого/stale Channel
-или Connected Line `None`. Проверьте attributes живого соединённого вызова и
-точность mapping. Сопоставьте канал с `core show channels concise` на PBX.
-Не заменяйте защитное условие на отправку сохранённого Channel.
+**Hangup does nothing.** This is expected for idle, ringing, another endpoint's
+or a stale Channel, or Connected Line `None`. Inspect the live connected call's
+attributes and verify the mapping. Compare the channel with
+`core show channels concise` on the PBX. Do not replace the guard with an action
+that sends a saved Channel value.
 
-**DTMF не вызывает уведомление.** Автоматизация выключена по умолчанию. Проверьте
-фактический DTMF sensor, направление, изменение timestamp, атрибут Digit и Context
-во время тестового разговора. Не ожидайте HA event-bus события от этого upstream.
+**DTMF produces no notification.** The automation is disabled by default. During
+a test call, check the actual DTMF sensor, direction, timestamp change, Digit
+attribute, and Context. Do not expect a DTMF event on the HA event bus from this
+upstream integration.
 
-**Assist звонит, но не слышит/не отвечает.** Отдельно проверьте pipeline в HA,
-разрешённость звонка устройства VoIP, SIP/SDP, RTP между узлами и обе translation
-paths G.711↔Opus на PBX. SIP 200 OK или наличие `codec_opus` в каталоге не являются
-проверкой аудио. Не меняйте transport Cisco на UDP только ради другого transport
-на плече Asterisk→HA.
+**Assist rings but cannot hear or reply.** Separately check the HA pipeline,
+the VoIP device's call permission, SIP/SDP, RTP between nodes, and both G.711↔Opus
+translation paths on the PBX. SIP 200 OK or a `codec_opus` file in a directory
+does not verify audio. Do not switch the Cisco phone's transport to UDP merely
+because the Asterisk→HA leg uses a different transport.
 
-## Восстановление
+## Recovery
 
-Восстановите компонент и HA config согласованной версии, затем entity mapping.
-Сохранение registry обычно сохраняет ID; всё равно проверьте их перед загрузкой
-package. При ротации AMI secret обновляйте PBX и config entry HA согласованно,
-проверяйте reconnect и не публикуйте оба значения в diff. Резервные копии должны
-быть зашифрованы и проверены восстановлением в отдельной среде.
+Restore compatible versions of the component and HA configuration, followed by
+the entity mapping. Preserving the registry usually preserves IDs; verify them
+before installing the package anyway. When rotating the AMI secret, update the
+PBX and the HA config entry together, check reconnection, and do not publish
+either value in a diff. Backups must be encrypted and tested by restoring them
+in a separate environment.

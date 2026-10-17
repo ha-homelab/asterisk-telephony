@@ -1,46 +1,46 @@
-# Конфиденциальность и доступ
+# Privacy and access
 
-![Границы данных](diagrams/privacy.svg)
+![Data boundaries](diagrams/privacy.svg)
 
-В public Git находятся исходники генераторов, документы, lock-файл upstream и
-примеры с синтетическими ID. Реальные IP, имена помещений/жильцов, entity map,
-AMI credentials, `.storage`, резервные копии и журналы остаются в `.local/`
-или в вашем закрытом хранилище. `.gitignore` снижает вероятность ошибки, но не
-заменяет просмотр `git diff --cached` перед публикацией.
+Public Git contains generator source code, documentation, the upstream lock
+file, and examples with synthetic IDs. Actual IP addresses, room and resident
+names, entity maps, AMI credentials, `.storage`, backups, and logs stay in
+`.local/` or your private storage. `.gitignore` reduces the chance of mistakes
+but does not replace reviewing `git diff --cached` before publication.
 
-## Что видно Home Assistant
+## What Home Assistant can see
 
-AMI передаёт номера, имена CallerID, состояние и идентификаторы каналов, а DTMF
-события могут содержать набранные цифры. Не считайте их безобидной телеметрией.
-AMI password хранится в HA config entry, следовательно backup `.storage` также
-является секретом. Экспорт диагностических данных и debug log проверяют перед
-передачей третьим лицам. Не включайте постоянный debug upstream в общей системе
-логирования: action/response могут содержать параметры вызовов.
+AMI carries numbers, CallerID names, channel states and identifiers, and DTMF
+events may contain entered digits. Do not treat this as harmless telemetry.
+The AMI password is stored in the HA config entry, so `.storage` backups also
+contain secrets. Review diagnostic exports and debug logs before sharing them
+with others. Do not leave upstream debug logging permanently enabled in a
+shared logging system: actions and responses may contain call parameters.
 
 ## Recorder
 
-Сгенерированный `asterisk_privacy.yaml` исключает Connected Line и оба DTMF
-sensor каждого телефона из Recorder. Зарегистрированность и State остаются
-доступны для history. Это не удаляет исторические записи, не скрывает текущие
-attributes от пользователей HA и не меняет внешние log/backup-системы.
-Если такие сущности раньше сохранялись, рассмотрите отдельную очистку истории
-по [официальной документации Recorder](https://www.home-assistant.io/integrations/recorder/).
-Не запускайте общую purge базы только ради этой интеграции.
+The generated `asterisk_privacy.yaml` excludes each phone's Connected Line and
+both DTMF sensors from Recorder. Registered and State remain available in
+history. This does not remove old records, hide current attributes from HA
+users, or change external log and backup systems. If these entities were
+previously recorded, consider a separate history cleanup using the
+[official Recorder documentation](https://www.home-assistant.io/integrations/recorder/).
+Do not purge the entire database solely for this integration.
 
-## Доступ к AMI и HA
+## Access to AMI and HA
 
-Обычный AMI TCP выбранной интеграции не шифрует обмен. Используйте доверенную
-LAN или VPN, точный источник `/32` в ACL и host firewall. Внешние SIP/TFTP/AMI
-порты не публикуются. HA-аккаунт AMI имеет привилегированный `write=system`:
-одной только маскировкой опасных кнопок ограничить его нельзя.
+The selected integration's ordinary AMI TCP connection is unencrypted. Use a
+trusted LAN or VPN, an exact `/32` source ACL, and a host firewall. Do not
+publish SIP, TFTP, or AMI ports externally. HA's AMI account has privileged
+`write=system` access; hiding dangerous buttons does not restrict that access.
 
-Dashboard подтверждение защищает от случайного нажатия. Доступ к HA admin,
-скриптам, разработческим инструментам и автоматизациям выдавайте только тем,
-кто вправе управлять телефонией. DTMF automation по умолчанию выключена и
-показывает только локальное уведомление. Для будущих бытовых действий отдельно
-разберите авторизацию и ошибочные/повторные события.
+Dashboard confirmation prevents accidental clicks. Give HA administration,
+script, developer-tool, and automation access only to people authorized to
+control telephony. The DTMF automation is disabled by default and only displays
+a local notification. Before adding home controls, separately address
+authorization and incorrect or repeated events.
 
-Assist может отправлять аудио и текст настроенным speech/AI-провайдерам. Для
-полностью локального режима выберите локальные STT, conversation agent и TTS,
-проверьте их настройки и не называйте конфигурацию локальной только потому,
-что телефон соединяется с домашним IP.
+Assist may send audio and text to the configured speech or AI providers. For
+a fully local setup, choose local STT, a local conversation agent, and local
+TTS, and verify their settings. A phone connecting to a home IP address alone
+does not make the configuration local.

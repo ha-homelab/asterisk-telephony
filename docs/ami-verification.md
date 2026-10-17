@@ -1,62 +1,64 @@
-# Проверка AMI с безопасной передачей пароля
+# AMI verification with safe password handling
 
-[verify_ami.py](../scripts/verify_ami.py) проверяет именно контракт этого проекта:
-Asterisk **22.11.0**, PJSIP endpoint **ha-assist** и учётную запись AMI без
-права `command`. Нужен только Python 3.10+; сторонние пакеты не требуются.
+[verify_ami.py](../scripts/verify_ami.py) checks this project's specific contract:
+Asterisk **22.11.0**, the **ha-assist** PJSIP endpoint, and an AMI account without
+`command` permission. It requires only Python 3.10+; no third-party packages
+are needed.
 
-Проверки идут по одному TCP-соединению на порт **5038**:
+Checks use one TCP connection to port **5038**:
 
-1. `Login` с `Events: off`.
-2. `CoreSettings` и точное совпадение версии Asterisk.
-3. `PJSIPShowEndpoints`: чтение всех `EndpointList` до
-   `EndpointListComplete`, проверка числа записей и наличия `ha-assist`.
-4. `Command: core show version` обязан вернуть `Error / Permission denied`.
-   Если аккаунту ошибочно дали CLI-доступ, выполнится только эта команда чтения,
-   а проверка завершится ошибкой.
-5. `Logoff`; при сбое после успешного входа скрипт также пытается завершить сессию.
+1. `Login` with `Events: off`.
+2. `CoreSettings` and an exact Asterisk version match.
+3. `PJSIPShowEndpoints`: consume every `EndpointList` through
+   `EndpointListComplete`, verify the record count, and check for `ha-assist`.
+4. `Command: core show version` must return `Error / Permission denied`.
+   If the account was accidentally granted CLI access, only this read command
+   runs, and the verification fails.
+5. `Logoff`; after a failure following successful login, the script also tries
+   to end the session.
 
-Скрипт не создаёт звонков, не меняет PBX, не перезагружает службы и не перебирает
-адреса. `Events: off` отключает подписку на фоновые события; ответы списка
-на явно отправленный `PJSIPShowEndpoints` продолжают приходить.
+The script does not make calls, change the PBX, restart services, or scan
+addresses. `Events: off` disables the background event subscription; list
+responses to the explicit `PJSIPShowEndpoints` request still arrive.
 
-Успех — exit code `0` и один JSON-объект с `ok: true`. При несовпадении контракта
-или сетевой ошибке возвращаются exit code `1` и безопасные коды ошибок. Вывод
-содержит флаги проверок и число endpoints; адрес, имя пользователя, пароль,
-ответы AMI и вывод CLI не печатаются. Есть ограничения размера ответа и времени
-ожидания: до 8 секунд на сетевую операцию, общий deadline 45 секунд после чтения
-входа; DNS-разрешение адреса зависит от системного resolver.
+Success means exit code `0` and one JSON object with `ok: true`. A contract
+mismatch or network error returns exit code `1` with safe error codes. Output
+contains check flags and the endpoint count; it does not print the address,
+username, password, AMI replies, or CLI output. Response sizes and waits are
+bounded: up to 8 seconds per network operation and an overall 45-second deadline
+after reading input. Address resolution depends on the system's DNS resolver.
 
-## Вход через stdin
+## Input through stdin
 
-Скрипт принимает ровно три поля JSON и ждёт EOF после объекта:
+The script accepts exactly three JSON fields and waits for EOF after the object:
 
 ```json
 {"host":"pbx.example.invalid","username":"ha_monitor","secret":"REPLACE_LOCALLY"}
 ```
 
-Подготовьте такой JSON в приватном файле `.local/ami-credentials.json` с правами
-`0600`, используя локальный редактор или менеджер секретов. Не добавляйте его
-в Git. Сам пароль не должен появляться в shell-команде, аргументах процесса,
-`set -x`, сообщении чата или общем журнале.
+Prepare this JSON in a private `.local/ami-credentials.json` file with mode
+`0600`, using a local editor or secret manager. Do not add it to Git. The
+password must not appear in a shell command, process arguments, `set -x` output,
+a chat message, or shared logs.
 
-Если текущая машина и есть настоящий источник AMI-соединений HA:
+If the current machine is the actual source of HA's AMI connections:
 
 ```bash
 python3 scripts/verify_ami.py < .local/ami-credentials.json
 ```
 
-Запуск с ноутбука не проверяет ACL и маршрутизацию работающего HA. Для HA
-Container в Kubernetes выполните пробу **в существующем контейнере HA**, чтобы
-проверить его сетевой источник, включая возможный SNAT.
+Running the probe from a laptop does not verify the running HA instance's ACL
+or routing. For HA Container in Kubernetes, run it **inside the existing HA
+container** to check its network source, including any SNAT.
 
 ```bash
-# Замените эти несекретные имена на существующие context/namespace/pod/container.
+# Replace these nonsecret names with the existing context/namespace/pod/container.
 HA_CONTEXT=home-k3s
 HA_NAMESPACE=homeassistant
 HA_POD=home-assistant-0
 HA_CONTAINER=home-assistant
 
-# В контейнер копируется только код; пароль туда файлом не записывается.
+# Only code is copied into the container; the password is not stored there as a file.
 kubectl --context "$HA_CONTEXT" -n "$HA_NAMESPACE" exec -i "$HA_POD" \
   -c "$HA_CONTAINER" -- sh -c 'umask 077; cat > /tmp/verify_ami.py' \
   < scripts/verify_ami.py
@@ -69,31 +71,33 @@ kubectl --context "$HA_CONTEXT" -n "$HA_NAMESPACE" exec "$HA_POD" \
   -c "$HA_CONTAINER" -- rm /tmp/verify_ami.py
 ```
 
-Не используйте `-t`: секрет передаётся обычным stdin, без интерактивного терминала.
-Не вставляйте JSON с настоящим паролем непосредственно в команду, heredoc или
-пример `echo`. При автоматизации передавайте JSON через stdin дочернего процесса,
-а не через `--secret` или аргумент Python `-c`.
+Do not use `-t`: the secret travels through ordinary stdin, without an interactive
+terminal. Do not paste JSON containing a real password into a command, heredoc,
+or `echo` example. For automation, pass JSON to the child process's stdin,
+not through `--secret` or a Python `-c` argument.
 
-## Границы результата
+## What the result means
 
-Успешная проверка подтверждает доступность AMI из места запуска и указанные
-права. Она не проверяет SIP-регистрацию физических телефонов, разговор, DTMF,
-RTP, Opus, Assist pipeline, автоматизации HA или восстановление после обрыва.
-Наличие `ha-assist` означает наличие конфигурации endpoint, а не живой SIP-сеанс.
+A successful check confirms AMI reachability from the execution location and
+the specified permissions. It does not test physical phones' SIP registration,
+calls, DTMF, RTP, Opus, the Assist pipeline, HA automations, or recovery after
+a disconnection. The presence of `ha-assist` confirms endpoint configuration,
+not a live SIP session.
 
-Запрет `Command` также не делает учётную запись полностью доступной только
-для чтения: требуемое право `system` разрешает другие административные действия.
-Сохраните отдельного пользователя, ограничение источника `/32` и минимальные
-права из [контракта PBX](pbx-contract.md); не исправляйте отказ добавлением `all`.
+Denying `Command` does not make the account entirely read-only: the required
+`system` permission permits other administrative actions. Keep a separate user,
+a `/32` source restriction, and the minimum permissions from the
+[PBX contract](pbx-contract.md). Do not fix a denial by granting `all`.
 
-## Тесты без PBX
+## Tests without a PBX
 
 ```bash
 python3 -m unittest discover -s tests -p test_verify_ami.py -v
 ```
 
-Тесты используют `socketpair` внутри процесса и подменяют создание подключения.
-TCP-сервер не запускается; к домашнему HA/PBX и Интернету тесты не обращаются.
-Проверяются успех, отказ во входе, отсутствие endpoint, неожиданный доступ к CLI
-и блокировка CR/LF-инъекции до подключения. Каждый mock имеет ограниченный срок
-работы. Чужие `ActionID` игнорируются, а секрет в ответе mock не попадает в JSON.
+Tests use an in-process `socketpair` and replace connection creation. They
+start no TCP server and do not contact the home HA/PBX or the Internet.
+They cover success, denied login, a missing endpoint, unexpected CLI access,
+and rejection of CR/LF injection before connecting. Each mock has a bounded
+lifetime. Unrelated `ActionID` values are ignored, and a secret returned by
+the mock never reaches the output JSON.

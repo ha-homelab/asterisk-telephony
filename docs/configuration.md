@@ -1,46 +1,48 @@
-# Package, dashboard, DTMF
+# Package, dashboard, and DTMF
 
-## Реальные entity ID
+## Actual entity IDs
 
-Upstream создаёт Registered, State, Connected Line, DTMF Sent и DTMF Received
-для найденных SIP/PJSIP endpoint. Названия могут зависеть от entity registry,
-переименований и конфликтов. Не выводите entity ID из номера по шаблону.
+Upstream creates Registered, State, Connected Line, DTMF Sent, and DTMF Received
+entities for discovered SIP/PJSIP endpoints. Names may depend on the entity
+registry, renaming, and conflicts. Do not derive entity IDs from a phone number
+using a naming pattern.
 
-Откройте Devices & services → Asterisk → устройство телефона → Entities и
-скопируйте фактические ID. У Registered домен `binary_sensor`, у остальных
-`sensor`. Заполните все пять полей каждого телефона в `.local/site.json`.
-На первой итерации достаточно двух аппаратов; остальные добавляются аналогично.
+Open Devices & services → Asterisk → the phone device → Entities and copy the
+actual IDs. Registered uses the `binary_sensor` domain; the others use `sensor`.
+Fill in all five fields for each phone in `.local/site.json`. Start with two
+phones; add the others in the same way.
 
-Значение Registered upstream получает из device state, а не из полного аудита
-SIP ContactStatus. State описывает состояние endpoint. Connected Line показывает
-последнее событие одного канала, не полный список одновременных вызовов.
-Проверку регистрации и всех каналов выполняйте также на Asterisk.
+Upstream derives Registered from device state, not a complete audit of SIP
+ContactStatus. State describes the endpoint state. Connected Line represents
+the last event for one channel, not a complete list of simultaneous calls.
+Also check registration and the full channel list directly on Asterisk.
 
 ```bash
 python3 scripts/render.py --input .local/site.json --output .local/rendered
 ```
 
-Генератор не выводит mapping или AMI secret. Он отклоняет неизвестные поля,
-заглушки, неподходящие домены, повторяющиеся ID и небезопасные context/extension.
-Каждый запуск используйте свежий output-каталог: файлы не перезаписываются.
-Это синтаксические проверки, а наличие сущностей подтверждает пользователь в HA.
+The generator does not print the mapping or AMI secret. It rejects unknown
+fields, placeholders, unsuitable domains, duplicate IDs, and unsafe contexts
+or extensions. Use a fresh output directory on each run: existing files are
+not overwritten. These are syntax checks; the user must confirm that the
+entities actually exist in HA.
 
-## Подключение файлов
+## Installing the files
 
-Скопируйте `asterisk.yaml` и `asterisk_privacy.yaml` в `/config/packages/`.
-Не копируйте dashboard в packages. В **существующую** секцию `homeassistant`
-в `configuration.yaml` добавьте packages, не создавая второй ключ:
+Copy `asterisk.yaml` and `asterisk_privacy.yaml` to `/config/packages/`.
+Do not copy the dashboard into packages. Add packages to the **existing**
+`homeassistant` section in `configuration.yaml`, without creating a duplicate key:
 
 ```yaml
 homeassistant:
   packages: !include_dir_named packages
 ```
 
-Если packages уже подключены другим способом, адаптируйте путь к этой схеме.
-[Официальные правила объединения packages](https://www.home-assistant.io/docs/configuration/packages/).
+If packages are already included another way, adapt the path to your setup.
+[Official package merging rules](https://www.home-assistant.io/docs/configuration/packages/).
 
-Скопируйте `asterisk_dashboard.yaml` в `/config/dashboards/`. Для YAML dashboard
-добавьте в существующий `lovelace`:
+Copy `asterisk_dashboard.yaml` to `/config/dashboards/`. For a YAML dashboard,
+add the following to the existing `lovelace` section:
 
 ```yaml
 lovelace:
@@ -53,44 +55,45 @@ lovelace:
       filename: dashboards/asterisk_dashboard.yaml
 ```
 
-Либо создайте отдельный dashboard в UI и перенесите содержимое файла через
-Raw configuration editor. Не заменяйте основной dashboard целиком.
-Затем config check и контролируемый restart/reload. Наши скрипты имеют префикс
-`asterisk_`; проверьте отсутствие таких же ключей в других packages.
+Alternatively, create a separate dashboard in the UI and paste the file contents
+into the Raw configuration editor. Do not replace the main dashboard wholesale.
+Then run a config check and a controlled restart or reload. These scripts use
+the `asterisk_` prefix; check for duplicate keys in other packages.
 
-## Управление звонками
+## Call control
 
-`script.asterisk_call_pair` использует `asterisk.send_action` с полями
-`action: Originate`, `parameters: {Channel, Context, Exten, Priority, CallerID,
-Timeout, Async}`. Разрешение PBX `allow_originate:true` обязательно.
-`script.asterisk_call_assist` аналогично сначала звонит выбранному аппарату,
-затем соединяет его с 630. Если Assist ещё не прошёл приёмку, кнопку не используйте.
+`script.asterisk_call_pair` uses `asterisk.send_action` with
+`action: Originate` and `parameters: {Channel, Context, Exten, Priority, CallerID,
+Timeout, Async}`. The PBX setting `allow_originate:true` is required.
+Similarly, `script.asterisk_call_assist` rings the selected phone first, then
+connects it to 630. Do not use this button until Assist has passed acceptance tests.
 
-`script.asterisk_hangup_<номер>` каждый раз читает **актуальный** `Channel`
-из указанного Connected Line sensor. Условие требует канал `PJSIP/<номер>-…`,
-состояние `Up` и непустую Connected Line. Idle/stale/чужой канал не отправляется.
-Кнопка предназначена для соединённого разговора, а не для всех стадий ringing.
-Если upstream сообщает канал противоположной стороны, защита откажет в действии:
-используйте правильный sensor после проверки атрибутов. Никогда не сохраняйте
-суффикс канала вроде `-0000001a` как постоянную настройку.
+`script.asterisk_hangup_<number>` reads the **current** `Channel` from the chosen
+Connected Line sensor every time. Its guard requires a `PJSIP/<number>-…` channel,
+state `Up`, and a nonempty Connected Line. It does not send an idle, stale, or
+another endpoint's channel. The button is for connected calls, not every ringing
+stage. If upstream reports the opposite party's channel, the guard rejects the
+action: inspect the attributes and select the correct sensor. Never store a
+channel suffix such as `-0000001a` as a permanent setting.
 
-Dashboard требует подтверждение перед звонком и Hangup. Это защита от случайного
-нажатия, а не механизм разграничения AMI-полномочий.
+The dashboard asks for confirmation before calling or hanging up. This prevents
+accidental clicks; it does not restrict the account's AMI permissions.
 
 ## DTMF
 
-У upstream нет отдельного HA event-bus события DTMF. Датчик DTMF имеет timestamp
-в state и `Digit`, `Channel`, `ConnectedLineNum`, `Context` в attributes.
-Направления Sent/Received описываются со стороны Asterisk и фильтруются по
-ConnectedLineNum, поэтому название sensor не гарантирует, что это клавиатура
-того же физического аппарата. Проверьте оба направления тестовым звонком.
+Upstream does not emit a separate DTMF event on the HA event bus. A DTMF sensor
+stores a timestamp in its state and `Digit`, `Channel`, `ConnectedLineNum`, and
+`Context` in its attributes. Sent/Received directions are from Asterisk's
+perspective and are filtered by ConnectedLineNum. The sensor name therefore
+does not guarantee that a digit came from that physical handset's keypad.
+Check both directions with a test call.
 
-Наш пример использует state trigger, изменение timestamp, выбранную `Digit`
-и context. По умолчанию `dtmf.enabled:false`, а automation `initial_state:false`.
-Выберите фактический sensor после теста, затем осознанно включите automation.
-Результат — `persistent_notification.create`, без замков, сигнализации,
-дверей, внешних сообщений или платежей. Не вводите DTMF-секреты в тесте.
+The example uses a state trigger, a changed timestamp, the selected `Digit`,
+and the context. Defaults are `dtmf.enabled:false` and automation
+`initial_state:false`. Select the actual sensor after testing, then deliberately
+enable the automation. It calls `persistent_notification.create` only: no locks,
+alarms, doors, external messages, or payments. Do not enter DTMF secrets during testing.
 
-Отдельный privacy package исключает call/DTMF entities из Recorder. Dashboard
-показывает время последнего DTMF, а не вводимые цифры. При диагностике атрибут
-`Digit` можно посмотреть в Developer tools → States.
+A separate privacy package excludes call and DTMF entities from Recorder.
+The dashboard shows the time of the last DTMF event, not the entered digits.
+For troubleshooting, inspect the `Digit` attribute in Developer tools → States.

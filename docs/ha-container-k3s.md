@@ -1,49 +1,51 @@
-# Home Assistant Container в k3s
+# Home Assistant Container in k3s
 
-Здесь предполагается **уже существующий** Home Assistant Container с постоянным
-`/config`. Установка интеграции не требует HA OS, Supervisor или нового кластера.
-Компонент Asterisk — custom integration в процессе HA. Официальная VoIP —
-отдельная встроенная интеграция, не add-on.
+These instructions assume an **existing** Home Assistant Container with
+persistent `/config` storage. Installing the integration does not require HA OS,
+Supervisor, or a new cluster. Asterisk is a custom integration running inside
+HA. Official VoIP is a separate built-in integration, not an add-on.
 
-## Подготовка
+## Preparation
 
-Запишите локально namespace, Deployment, имя контейнера, PVC, UID/GID и IP,
-с которого HA реально приходит к PBX. Эти значения не коммитятся. Проверьте,
-что Pod не хранит `/config` в `emptyDir` и backup включает `.storage`.
-Для одной HA config используйте одну реплику; при обновлении избегайте двух
-процессов, одновременно пишущих в один config. Для существующего Deployment
-подходит стратегия `Recreate`, но сначала сверяйте её с вашим runbook.
+Record the namespace, Deployment, container name, PVC, UID/GID, and the IP
+address from which HA actually reaches the PBX in private local notes. Do not
+commit these values. Check that the Pod does not store `/config` in `emptyDir`
+and that backups include `.storage`. Use one replica per HA configuration;
+avoid two processes writing to the same configuration during an update.
+`Recreate` is suitable for an existing Deployment, but check it against your
+runbook first.
 
-AMI требуется исходящее TCP-соединение HA к PBX:5038. Порт не надо публиковать
-через Ingress, NodePort или роутер. При обычной pod-сети source IP может зависеть
-от SNAT: /32 ACL на PBX должен совпасть с **наблюдаемым** адресом клиента.
+AMI requires an outbound TCP connection from HA to PBX:5038. Do not publish
+this port through Ingress, NodePort, or the router. With ordinary pod networking,
+the source IP may depend on SNAT: the PBX's /32 ACL must match the **observed**
+client address.
 
-Для VoIP удобен `hostNetwork: true` с фиксированным LAN-узлом и
-`dnsPolicy: ClusterFirstWithHostNet`. Тогда SIP и RTP имеют понятные LAN-адреса.
-Это проектный вариант, а не обязательное условие любой HA-инсталляции.
-`NetworkPolicy` не заменяет host firewall для hostNetwork.
+For VoIP, `hostNetwork: true` on a fixed LAN node with
+`dnsPolicy: ClusterFirstWithHostNet` gives SIP and RTP predictable LAN addresses.
+This is the design used here, not a requirement for every HA installation.
+`NetworkPolicy` does not replace a host firewall for hostNetwork workloads.
 
-Проверьте занятость SIP-порта. Если Asterisk и HA находятся на одном узле,
-два процесса не могут занять один и тот же IP/UDP-порт. Используйте разные
-LAN-адреса/узлы либо измените порт VoIP через её настройки и синхронизируйте
-`assist.sip_port` на PBX. HA [документирует изменение VoIP-порта](https://www.home-assistant.io/integrations/voip/).
+Check whether the SIP port is already in use. If Asterisk and HA share a node,
+two processes cannot bind the same IP/UDP port. Use different LAN addresses
+or nodes, or change the VoIP port in its settings and update `assist.sip_port`
+on the PBX to match. HA [documents how to change the VoIP port](https://www.home-assistant.io/integrations/voip/).
 
-## Доставка файлов
+## Delivering the files
 
-Самый простой способ — запустить installer на хосте, где config PVC/volume
-доступен как каталог, с владельцем, от которого работает HA. Если доступ есть
-только через Pod, сначала подготовьте staging локально, затем выполните backup
-и используйте свой привычный способ копирования в PVC.
+The simplest approach is to run the installer on a host where the config PVC
+or volume is accessible as a directory, under HA's owner account. If you can
+only access it through the Pod, prepare staging locally first, make a backup,
+and use your usual method to copy files into the PVC.
 
-Пример для выбранного работающего Pod, после локальной проверки переменных:
+Example for a selected running Pod, after verifying the variables locally:
 
 ```bash
 set -eu
-# Переменные задаются локально. Не вставляйте сюда production kubeconfig.
+# Set variables locally. Do not paste a production kubeconfig here.
 : "${HA_KUBE_CONTEXT:?set context}" "${HA_NAMESPACE:?set namespace}" "${HA_POD:?set pod}" "${HA_CONTAINER:?set container}"
 kubectl --context "$HA_KUBE_CONTEXT" -n "$HA_NAMESPACE" exec "$HA_POD" -c "$HA_CONTAINER" -- \
   test -f /config/configuration.yaml
-# Проверки должны пройти. Существующий каталог или symlink требуют остановки.
+# These checks must pass. Stop if the component directory exists or a path is a symlink.
 kubectl --context "$HA_KUBE_CONTEXT" -n "$HA_NAMESPACE" exec "$HA_POD" -c "$HA_CONTAINER" -- \
   test ! -L /config/custom_components
 kubectl --context "$HA_KUBE_CONTEXT" -n "$HA_NAMESPACE" exec "$HA_POD" -c "$HA_CONTAINER" -- \
@@ -56,14 +58,15 @@ kubectl --context "$HA_KUBE_CONTEXT" cp .local/upstream-stage/custom_components/
   "$HA_NAMESPACE/$HA_POD:/config/custom_components/asterisk" -c "$HA_CONTAINER"
 ```
 
-`kubectl cp` требует `tar` внутри контейнера. Если его нет, используйте временный
-вспомогательный Pod с тем же PVC согласно своей политике доступа, а не меняйте
-постоянный образ HA ради копирования. При замене существующего компонента сначала
-остановите HA и работайте через PVC/maintenance Pod, чтобы не смешать версии.
+`kubectl cp` requires `tar` inside the container. If it is absent, use a temporary
+helper Pod with the same PVC under your access policy, rather than changing
+the permanent HA image just to copy files. When replacing an existing component,
+stop HA first and work through the PVC or a maintenance Pod to avoid mixing versions.
 
-Убедитесь, что каталог один: `/config/custom_components/asterisk/manifest.json`,
-а не вложенный `asterisk/asterisk/manifest.json`. Проверьте UID/GID и чтение файлов
-из контейнера. Установите YAML по [configuration.md](configuration.md), затем:
+Check that there is only one directory level:
+`/config/custom_components/asterisk/manifest.json`, not a nested
+`asterisk/asterisk/manifest.json`. Check UID/GID and file readability from inside
+the container. Install the YAML using [configuration.md](configuration.md), then run:
 
 ```bash
 : "${HA_KUBE_CONTEXT:?set context}" "${HA_NAMESPACE:?set namespace}" "${HA_POD:?set pod}" "${HA_CONTAINER:?set container}"
@@ -71,14 +74,14 @@ kubectl --context "$HA_KUBE_CONTEXT" -n "$HA_NAMESPACE" exec "$HA_POD" -c "$HA_C
   python -m homeassistant --script check_config --config /config
 ```
 
-После успешной проверки перезапустите **только свой HA Deployment** штатным
-способом и дождитесь Ready. Readiness HA не подтверждает регистрацию телефонов
-или аудио Assist: выполните [приёмку](acceptance.md).
+After a successful check, restart **only your HA Deployment** using its normal
+procedure and wait for Ready. HA readiness does not confirm phone registration
+or Assist audio: perform [acceptance testing](acceptance.md).
 
-## Assist в Container
+## Assist in Container
 
-Добавьте интеграции **Voice over IP** и необходимые speech-провайдеры. Для
-полностью локального pipeline можно использовать отдельно развёрнутые Wyoming
-STT/TTS-сервисы, если они уже есть в доме. Этот репозиторий не создаёт их и не
-подписывает вас на облачный сервис. Выберите язык, STT, conversation agent и TTS
-в настройках Assist. Проверяйте pipeline сначала в интерфейсе HA, затем по SIP.
+Add **Voice over IP** and the speech providers you need. For a fully local
+pipeline, use separately deployed Wyoming STT/TTS services if they already
+exist at home. This repository does not create them or subscribe you to a
+cloud service. Select the language, STT, conversation agent, and TTS in the
+Assist settings. Test the pipeline in the HA UI first, then over SIP.

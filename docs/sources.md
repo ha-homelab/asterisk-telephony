@@ -1,31 +1,32 @@
-# Источники и границы проверки
+# Sources and verification limits
 
-Проверка исходников: 16 октября 2026 года. Наличие функций в исходниках не
-означает, что они испытаны на конкретной домашней инсталляции.
+Source review date: October 16, 2026. A feature being present in source code
+does not mean it has been tested on a particular home installation.
 
 ## Upstream Asterisk integration
 
-- [Репозиторий](https://github.com/TECH7Fox/asterisk-hass-integration).
-- [Закреплённый commit](https://github.com/TECH7Fox/asterisk-hass-integration/tree/65ea9d637a58d6edb3b2bc9e8a6f90de896a9b3e), manifest version 1.0.5.
-- [Action schema](https://github.com/TECH7Fox/asterisk-hass-integration/blob/65ea9d637a58d6edb3b2bc9e8a6f90de896a9b3e/custom_components/asterisk/services.yaml): `asterisk.send_action`, поля `action` и `parameters`.
-- [Setup/service implementation](https://github.com/TECH7Fox/asterisk-hass-integration/blob/65ea9d637a58d6edb3b2bc9e8a6f90de896a9b3e/custom_components/asterisk/__init__.py): discovery при setup, глобальный action, AMI TCP.
-- [Sensors](https://github.com/TECH7Fox/asterisk-hass-integration/blob/65ea9d637a58d6edb3b2bc9e8a6f90de896a9b3e/custom_components/asterisk/sensor.py): Channel attributes и timestamp DTMF sensors.
-- [Binary sensor](https://github.com/TECH7Fox/asterisk-hass-integration/blob/65ea9d637a58d6edb3b2bc9e8a6f90de896a9b3e/custom_components/asterisk/binary_sensor.py): Registered выводится из device state.
-- [Lock](../upstream.lock.json): commit, URL, размер архива и SHA-256.
+- [Repository](https://github.com/TECH7Fox/asterisk-hass-integration).
+- [Pinned commit](https://github.com/TECH7Fox/asterisk-hass-integration/tree/65ea9d637a58d6edb3b2bc9e8a6f90de896a9b3e), manifest version 1.0.5.
+- [Action schema](https://github.com/TECH7Fox/asterisk-hass-integration/blob/65ea9d637a58d6edb3b2bc9e8a6f90de896a9b3e/custom_components/asterisk/services.yaml): `asterisk.send_action`, with `action` and `parameters` fields.
+- [Setup/service implementation](https://github.com/TECH7Fox/asterisk-hass-integration/blob/65ea9d637a58d6edb3b2bc9e8a6f90de896a9b3e/custom_components/asterisk/__init__.py): discovery during setup, a global action, and AMI TCP.
+- [Sensors](https://github.com/TECH7Fox/asterisk-hass-integration/blob/65ea9d637a58d6edb3b2bc9e8a6f90de896a9b3e/custom_components/asterisk/sensor.py): Channel attributes and DTMF timestamp sensors.
+- [Binary sensor](https://github.com/TECH7Fox/asterisk-hass-integration/blob/65ea9d637a58d6edb3b2bc9e8a6f90de896a9b3e/custom_components/asterisk/binary_sensor.py): Registered is derived from device state.
+- [Lock file](../upstream.lock.json): commit, URL, archive size, and SHA-256.
 
-У upstream не обнаружена явная лицензия для копирования исходников в этот
-репозиторий. Здесь находятся собственные скрипты/документы и ссылки; installer
-получает выбранный пользователем upstream непосредственно из его репозитория.
-Наличие ссылки или публичного исходника не следует трактовать как перелицензирование.
+No explicit upstream license allowing its source to be copied into this
+repository was found. This repository contains its own scripts, documentation,
+and links; the installer obtains the user's selected upstream directly from
+its repository. A link or publicly visible source code must not be interpreted
+as relicensing it.
 
-## Home Assistant и HACS
+## Home Assistant and HACS
 
-- [Packages](https://www.home-assistant.io/docs/configuration/packages/): включение и правила объединения YAML.
-- [Dashboard actions](https://www.home-assistant.io/dashboards/actions/): `perform-action`, `perform_action` и confirmation.
-- [Recorder](https://www.home-assistant.io/integrations/recorder/): исключение entities и история.
-- [Voice over IP](https://www.home-assistant.io/integrations/voip/): отдельная интеграция, настройка SIP-порта.
-- [HA 2026.10.2 VoIP source](https://github.com/home-assistant/core/tree/2026.10.2/homeassistant/components/voip): версия для проверки media-контракта.
-- [HACS custom repositories](https://www.hacs.xyz/docs/faq/custom_repositories/): установка внешней интеграции.
+- [Packages](https://www.home-assistant.io/docs/configuration/packages/): YAML inclusion and merging rules.
+- [Dashboard actions](https://www.home-assistant.io/dashboards/actions/): `perform-action`, `perform_action`, and confirmation.
+- [Recorder](https://www.home-assistant.io/integrations/recorder/): entity exclusion and history.
+- [Voice over IP](https://www.home-assistant.io/integrations/voip/): the separate integration and SIP port configuration.
+- [HA 2026.10.2 VoIP source](https://github.com/home-assistant/core/tree/2026.10.2/homeassistant/components/voip): the version used to verify the media contract.
+- [HACS custom repositories](https://www.hacs.xyz/docs/faq/custom_repositories/): installation of external integrations.
 
 ## Asterisk
 
@@ -33,5 +34,6 @@
 - [AMI Hangup](https://docs.asterisk.org/Latest_API/API_Documentation/AMI_Actions/Hangup/).
 - [AMI configuration](https://docs.asterisk.org/Configuration/Interfaces/Asterisk-Manager-Interface-AMI/).
 
-Права AMI дополнительно сверяются с версией вашего Asterisk. Discovery выбранного
-upstream требует `system`; такой account нельзя характеризовать как read-only.
+Also verify AMI permissions against your actual Asterisk version. Discovery
+in the selected upstream requires `system`; that account must not be described
+as read-only.
