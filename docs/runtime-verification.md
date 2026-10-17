@@ -94,6 +94,17 @@ API; browser confirmation behavior remains a separate UI check.
 The linked live record distinguishes these checks from the remaining physical
 acceptance work.
 
+Adding line 202 required reloading the existing Asterisk config entry before
+its five real entity IDs appeared. The update retained the 201 mappings,
+`call_from: "201"`, and `call_to: null`: these are two endpoints on one handset.
+The guarded package update compared live files with saved baseline hashes.
+The Recorder change required a full HA restart; verification preserved all 217
+pre-update script/automation entities and automation enabled states, and
+confirmed the exclusion union grew from 46 to 49 entries. Dashboard API
+readback matched the reviewed update. The existing native VoIP identity and
+Russian Assist settings for 201 remained intact; no native VoIP identity for
+202 was created or tested.
+
 A subsequent live **202 → 600** test used the second line on that same 7945G.
 Asterisk reported 261 received and 261 transmitted G.711 μ-law RTP packets,
 with zero reported loss during the approximately five-second sample. Connected
@@ -102,6 +113,10 @@ HA Hangup script ended the current 202 channel. HA returned to `Not in use`,
 registration stayed on, and the PBX reported zero active channels. This verifies
 RTP flow and call control for 202, not operator-confirmed audible echo on that
 line. The prior human audio confirmation applies to 201.
+The preceding Hangup correction replaced only the owned script package and
+used `script.reload`, with no further HA restart or privacy/dashboard changes.
+The ended call's Channel attribute remained visible after HA returned to idle,
+confirming why Hangup must also require current Device State and channel ownership.
 
 After installation, test AMI reconnection, state updates when a phone registers
 or disconnects, incoming and outgoing calls, hold/hangup, and actual DTMF

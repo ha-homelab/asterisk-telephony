@@ -19,6 +19,12 @@ ContactStatus. State describes the endpoint state. Connected Line represents
 the last event for one channel, not a complete list of simultaneous calls.
 Also check registration and the full channel list directly on Asterisk.
 
+The pinned integration enumerates endpoints during setup. If a newly added
+endpoint is registered on Asterisk but absent from HA, reload the existing
+Asterisk config entry before copying its actual IDs; see the
+[discovery procedure](operations.md#symptoms). Do not invent IDs or add a
+duplicate integration.
+
 ```bash
 python3 scripts/render.py --input .local/site.json --output .local/rendered
 ```
@@ -76,6 +82,13 @@ Before using Hangup 202, compare its current `PJSIP/202-…` Channel and Device
 State with the live PBX call, as described below. Two lines on one handset do
 not satisfy acceptance tests that require two physical phones.
 
+Asterisk endpoint discovery does not create a native HA VoIP identity. That
+identity follows the extension presented on a call to 630. Adding line 202
+therefore does not require a second VoIP device or a change to 201's Allow
+calls, pipeline, or language settings. Discover and configure a separate 202
+VoIP identity only if that line will also call Assist; preserve the working
+201 identity and its controls.
+
 ## Installing the files
 
 Copy `asterisk.yaml` and `asterisk_privacy.yaml` to `/config/packages/`.
@@ -111,6 +124,8 @@ Recorder creates its exclusion filter at startup, so the new privacy package
 requires a restart. For later script-only changes, `script.reload` includes
 package scripts but does not activate Recorder changes. These scripts use the
 `asterisk_` prefix; check for duplicate keys in other packages.
+For an existing installation, use the [guarded update procedure](operations.md#updating-an-existing-installation)
+to preserve unrelated configuration and verify the result.
 
 ## Call control
 
@@ -134,6 +149,9 @@ Device State checks pass. Upstream sets this string on `Newchannel`, including
 an answered Echo call to 600 whose `ConnectedLineNum` remains `<unknown>`.
 It describes the absence of a connected-party number, not proof that no call
 exists. An idle endpoint or a missing/foreign Channel still fails the guard.
+Upstream can retain the last Channel attribute after Hangup while Device State
+has returned to `Not in use`; the presence of that attribute alone does not
+identify a live call.
 
 The guard rejects observed idle, unavailable, ringing, changed, or foreign
 channels. It cannot prove freshness if AMI events have been lost; after an AMI

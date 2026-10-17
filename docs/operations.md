@@ -14,6 +14,37 @@ an updated `upstream.lock.json`, and a staging test. Do not change the checksum
 just because a download stopped validating. GitHub-generated ZIP files can
 change when regenerated; confirm the source tree and provenance.
 
+## Updating an existing installation
+
+1. Save the current owned packages, base configuration, entity mappings,
+   dashboard, and hashes before rendering. Record existing script/automation
+   entity IDs and automation enabled states, Recorder exclusions, and native
+   VoIP settings. Keep this material private.
+2. Render into a fresh directory and review the diff. Immediately before
+   replacing a file, require its current hash to match the saved baseline.
+   Stop and reconcile any concurrent change. Replace only the owned files;
+   preserve existing endpoint mappings, call controls, and unrelated keys.
+   Read a storage-mode dashboard again before saving, require it to match the
+   baseline, and preserve its cards in the replacement.
+3. Wait for active calls to finish and run HA's configuration check. Redirect
+   raw stdout/stderr to a private file with `umask 077`: diagnostics can expose
+   credentials from unrelated
+   configuration. Report only the exit status and sanitized diagnostics, never
+   paste the full log into a public issue or commit. A change to Recorder
+   exclusions needs a controlled HA restart. For a script-only
+   correction, replace only `asterisk.yaml` and call `script.reload`; it reloads
+   package scripts without a restart and cannot apply Recorder changes.
+4. After a restart, wait for HA to reach `RUNNING` and the relevant config
+   entries to load. A ready container or responding HTTP endpoint alone is
+   insufficient. Verify all prior script/automation entities remain, automation
+   enabled states are unchanged, and Recorder has the exact previous exclusions
+   plus the intended additions. Confirm native VoIP settings, actual endpoint
+   IDs, and dashboard API readback against the reviewed result.
+5. Check the generated scripts are idle, the DTMF example remains disabled,
+   and no pair-call script exists when `call_to` is `null`. Record before/after
+   hashes and verification results, then test the changed call control with a
+   fresh live channel. Keep the previous owned files available for rollback.
+
 ## Symptoms
 
 **The integration does not connect.** Check the address and TCP5038 from the
@@ -26,8 +57,13 @@ version, PJSIP discovery, and denied CLI access from the HA container, use the
 
 **HA connects but has no entities.** Check `PJSIPShowEndpoints`, discovery
 permissions, and that the PJSIP endpoints existed before the integration loaded.
-This version enumerates devices during setup, so adding an endpoint on the PBX
-may require reloading or restarting the integration. A `SIPpeers` error is
+The pinned TECH7Fox 1.0.5 enumerates devices during setup. If a new endpoint is
+registered on the PBX but absent from HA, wait for calls to finish, then use
+Devices & services → Asterisk → the existing config entry's menu → Reload.
+This scoped reload was required to discover line 202; adding another config
+entry or restarting all of HA is unnecessary for endpoint discovery. Wait for
+the entry to load, confirm the original endpoint IDs remain, then copy the new
+endpoint's five actual entity IDs. A `SIPpeers` error is
 expected on a PJSIP-only PBX if subsequent PJSIP discovery succeeds. Do not use
 `write=all` as a general fix.
 
@@ -47,7 +83,9 @@ for an active Echo call: upstream can retain it from `Newchannel` when no
 connected-party number is supplied. Idle, ringing, unavailable, changed, or foreign channels are
 rejected. Connected Line's `ChannelStateDesc` can remain `Ring` after answer
 because upstream does not update it on `Newstate`. Compare the channel with
-`core show channels concise` on the PBX. Lost AMI events can leave stale states
+`core show channels concise` on the PBX. After Hangup, the old Channel attribute
+can remain even though Device State is `Not in use`; never treat that retained
+attribute as proof of an active call. Lost AMI events can leave stale states
 that the guard cannot detect; confirm fresh data after a disconnect. Do not
 replace the guard with an action that sends a saved Channel value.
 
