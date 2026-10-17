@@ -118,6 +118,26 @@ used `script.reload`, with no further HA restart or privacy/dashboard changes.
 The ended call's Channel attribute remained visible after HA returned to idle,
 confirming why Hangup must also require current Device State and channel ownership.
 
+HA was then prepared for six lines across three handsets. A scoped Asterisk
+integration reload discovered all 20 actual entities for new lines 203–206,
+while the two additional phones still required removal of old ITL trust.
+Four guarded Hangup scripts and their dashboard cards were installed without
+changing the existing 201/202 controls. A full configuration check passed;
+one controlled HA restart activated 12 additional Recorder exclusions, bringing
+the exact total from 49 to 61. Verification preserved all 218 pre-update
+script/automation entities and automation enabled states, and dashboard API
+readback matched the reviewed changes. The PBX had zero active calls/channels
+at the maintenance checks.
+
+Afterward, 201 and 202 were registered and idle, and 201's native VoIP identity
+and Russian Assist settings were unchanged. Lines 203–206 remained unregistered
+and `Unavailable`; no native VoIP identities for 203 or 205 had been discovered.
+Their conversion, registration, live calls, audio, Hangup and Assist acceptance
+remain pending. This verifies the HA configuration, not those phone tests.
+Existing offline entities can be configured using strict registry/device
+ownership checks while physical acceptance is pending; this does not require
+weakening the runtime Hangup guard or inventing entity IDs.
+
 After installation, test AMI reconnection, state updates when a phone registers
 or disconnects, incoming and outgoing calls, hold/hangup, and actual DTMF
 directions. Upstream uses `ConnectedLineNum` to select a sensor, so verify its
