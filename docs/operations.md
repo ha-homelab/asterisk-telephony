@@ -41,8 +41,10 @@ context, the destination extension, and source phone availability. Answer the
 source phone first; only then does Asterisk connect the destination.
 
 **Hangup does nothing.** The mapped Device State must be `In use`, Connected Line
-must be nonempty, and its current Channel must still equal the captured channel
-for this endpoint. Idle, ringing, unavailable, changed, or foreign channels are
+must not be `unknown`, `unavailable`, or empty, and its current Channel must still
+equal the captured channel for this endpoint. The literal state `None` is valid
+for an active Echo call: upstream can retain it from `Newchannel` when no
+connected-party number is supplied. Idle, ringing, unavailable, changed, or foreign channels are
 rejected. Connected Line's `ChannelStateDesc` can remain `Ring` after answer
 because upstream does not update it on `Newstate`. Compare the channel with
 `core show channels concise` on the PBX. Lost AMI events can leave stale states

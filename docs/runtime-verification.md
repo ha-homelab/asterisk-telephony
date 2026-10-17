@@ -25,6 +25,14 @@ versions. The added runtime cases cover single-phone YAML and an answered
 call whose Connected Line still reports `Ring`: Hangup uses the current
 Device State and the captured channel instead.
 
+A later local regression on HA 2026.10.0 covers an Echo call whose Connected
+Line remains the literal string `None` after `Newchannel`, with
+`ConnectedLineNum=<unknown>`. It runs the generated Hangup script through HA's
+actual script engine and service registry: an active endpoint's own channel
+receives Hangup, while idle, ringing, missing, foreign, and unavailable cases
+send no action. This uses the pinned upstream sensor classes and modeled AMI;
+it does not itself prove a successful live call or delivery after an AMI outage.
+
 The following API boundaries were verified:
 
 - The upstream configuration form serializes with current HA/Probatio and
@@ -62,7 +70,7 @@ ASTERISK_UPSTREAM_ROOT="$PWD/.local/runtime-upstream" \
 The installer refuses to overwrite an existing staging directory. For a later
 run, reuse the verified directory or select a new path. An ordinary
 `python3 -m unittest discover -s tests -v` without this environment skips the
-six runtime tests and runs the main standard-library test suite.
+seven runtime tests and runs the main standard-library test suite.
 
 ## What still needs acceptance testing at home
 
@@ -85,6 +93,15 @@ had no active channels. The dashboard configuration was read back through the
 API; browser confirmation behavior remains a separate UI check.
 The linked live record distinguishes these checks from the remaining physical
 acceptance work.
+
+A subsequent live **202 → 600** test used the second line on that same 7945G.
+Asterisk reported 261 received and 261 transmitted G.711 μ-law RTP packets,
+with zero reported loss during the approximately five-second sample. Connected
+Line remained `None` while Device State was `In use`; the corrected generated
+HA Hangup script ended the current 202 channel. HA returned to `Not in use`,
+registration stayed on, and the PBX reported zero active channels. This verifies
+RTP flow and call control for 202, not operator-confirmed audible echo on that
+line. The prior human audio confirmation applies to 201.
 
 After installation, test AMI reconnection, state updates when a phone registers
 or disconnects, incoming and outgoing calls, hold/hangup, and actual DTMF

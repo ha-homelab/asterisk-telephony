@@ -19,7 +19,7 @@ is not redistributed here.
   dashboard using **actual entity IDs** supplied from your HA instance.
   It does not need the AMI password. A single-phone pilot uses `call_to:null`
   and includes Assist and Hangup controls without a fictional second phone.
-- The call script rings **201** first, then connects it to **202** after answer.
+- The pair-call script rings **201** first, then connects it to **202** after answer.
   Hangup reads the current `Channel` attribute and checks for a connected call.
 - The DTMF example only displays a notification inside HA and is disabled by default.
 - Assist has a separate SIP and audio path. **Working AMI does not prove that
@@ -61,6 +61,11 @@ python3 scripts/render.py --input .local/site.json --output .local/rendered
 For one verified phone, start from `examples/site.single-phone.example.json`
 instead. Keep `call_to:null` and fill all five real entity IDs; the pair-call
 script and button are omitted. See the [single-phone pilot instructions](docs/configuration.md#single-phone-pilot).
+
+The `phones` array maps SIP endpoints. Lines **201** and **202** on the same
+handset are two endpoints, but still one physical phone. Keep `call_to:null`
+and `call_from:"201"` to retain the existing Assist control while adding the
+second line's status and Hangup control; see [two lines on one handset](docs/configuration.md#two-lines-on-one-handset).
 
 5. Install the three generated YAML files using the
    [package and dashboard instructions](docs/configuration.md), run a config

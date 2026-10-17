@@ -9,9 +9,10 @@ using a naming pattern.
 
 Open Devices & services → Asterisk → the phone device → Entities and copy the
 actual IDs. Registered uses the `binary_sensor` domain; the others use `sensor`.
-Fill in all five fields for each real phone in `.local/site.json`. The generator
-accepts 1–50 phones. Start with the single-phone pilot below, or use
-`examples/site.example.json` for two phones; add other real phones in the same way.
+Fill in all five fields for each real SIP endpoint in `.local/site.json`.
+The `phones` array accepts 1–50 endpoint mappings, regardless of how many
+physical handsets provide them. Start with the single-phone pilot below, or
+use `examples/site.example.json` for pair calling between two physical phones.
 
 Upstream derives Registered from device state, not a complete audit of SIP
 ContactStatus. State describes the endpoint state. Connected Line represents
@@ -59,6 +60,22 @@ Conversely, if pair calling is disabled after an earlier installation, replace
 the old owned package rather than merging its obsolete call-pair script into
 the new one. Existing two-phone configurations need no changes.
 
+### Two lines on one handset
+
+For lines 201 and 202 on one Cisco 7945G, keep `call_from: "201"` and
+`call_to: null`. Retain the existing 201 mapping and add 202 only after its
+five actual Asterisk entity IDs have been discovered and checked. Name the
+rows, for example, `Cisco 7945G — line 201` and `Cisco 7945G — line 202`.
+The generator retains Assist from 201 and Hangup 201, adds Hangup 202 and
+three Recorder exclusions, and leaves pair calling absent. Keep the existing
+disabled DTMF example unchanged. No renderer change is required.
+
+Replace the owned generated package after reviewing the diff; do not install
+a second copy. Preserve custom dashboard cards, including native VoIP controls.
+Before using Hangup 202, compare its current `PJSIP/202-…` Channel and Device
+State with the live PBX call, as described below. Two lines on one handset do
+not satisfy acceptance tests that require two physical phones.
+
 ## Installing the files
 
 Copy `asterisk.yaml` and `asterisk_privacy.yaml` to `/config/packages/`.
@@ -105,11 +122,18 @@ connects it to 630. Do not use this button until Assist has passed acceptance te
 
 `script.asterisk_hangup_<number>` reads the **current** `Channel` from the chosen
 Connected Line sensor every time. Its guard requires a `PJSIP/<number>-…` channel,
-the mapped Device State sensor to be `In use`, and a nonempty Connected Line.
+the mapped Device State sensor to be `In use`, and a Connected Line state other
+than `unknown`, `unavailable`, or an empty string.
 It also rechecks that the current Channel still equals the captured value.
 Upstream updates Connected Line on `NewConnectedLine`, `Newchannel`, and `Hangup`,
 not `Newstate`; its `ChannelStateDesc` can remain `Ring` during an answered call.
 Device State instead follows `DeviceStateChange`.
+
+The literal Connected Line state `None` is allowed when those channel and
+Device State checks pass. Upstream sets this string on `Newchannel`, including
+an answered Echo call to 600 whose `ConnectedLineNum` remains `<unknown>`.
+It describes the absence of a connected-party number, not proof that no call
+exists. An idle endpoint or a missing/foreign Channel still fails the guard.
 
 The guard rejects observed idle, unavailable, ringing, changed, or foreign
 channels. It cannot prove freshness if AMI events have been lost; after an AMI

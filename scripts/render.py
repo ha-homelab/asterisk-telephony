@@ -70,7 +70,7 @@ def build(config):
             'alias': f'Asterisk: end connected call on {ext}', 'mode': 'single',
             'sequence': [
                 {'variables': {'channel': "{{ state_attr('" + connected + "', 'Channel') | default('', true) }}"}},
-                {'condition': 'template', 'value_template': "{{ channel is string and channel.startswith('PJSIP/" + ext + "-') and state_attr('" + connected + "', 'Channel') == channel and states('" + connected + "') not in ['None', 'unknown', 'unavailable', ''] and states('" + ent['state'] + "') == 'In use' }}"},
+                {'condition': 'template', 'value_template': "{{ channel is string and channel.startswith('PJSIP/" + ext + "-') and state_attr('" + connected + "', 'Channel') == channel and states('" + connected + "') not in ['unknown', 'unavailable', ''] and states('" + ent['state'] + "') == 'In use' }}"},
                 {'action': 'asterisk.send_action', 'data': {'action': 'Hangup', 'parameters': {'Channel': '{{ channel }}'}}},
             ]}
         rows.append({'type': 'entities', 'title': phone['name'], 'show_header_toggle': False, 'entities': [

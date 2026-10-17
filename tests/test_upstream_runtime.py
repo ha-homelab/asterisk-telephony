@@ -212,6 +212,58 @@ class UpstreamRuntimeTests(unittest.IsolatedAsyncioTestCase):
     async def test_single_phone_yaml_passes_actual_ha_script_and_automation_schemas(self):
         await self._assert_generated_yaml_schemas('site.single-phone.example.json')
 
+    async def test_echo_none_connected_line_hangup_runs_only_for_active_own_channel(self):
+        from homeassistant.core import Context
+        from homeassistant.components.script.config import async_validate_config_item
+        from homeassistant.helpers.script import Script
+        from test_render import config, render
+
+        await self.integration.async_setup_entry(self.hass, self.entry)
+        await asyncio.sleep(0)
+        await asyncio.sleep(0)
+        client = self.hass.data['asterisk'][self.entry.entry_id]['client']
+        device = {'extension': '202', 'tech': 'PJSIP', 'status': 'Not in use'}
+        connected = self.sensor.ConnectedLineSensor(self.hass, self.entry, device)
+        state = self.sensor.DeviceStateSensor(self.hass, self.entry, device)
+        for entity in (connected, state):
+            entity.schedule_update_ha_state = lambda *a, **k: None
+        channel = 'PJSIP/202-00000000'
+        client.emit('Newchannel', CallerIDNum='202', ConnectedLineNum='<unknown>',
+                    CallerIDName='Synthetic phone', ConnectedLineName='<unknown>',
+                    Channel=channel, ChannelState='4', ChannelStateDesc='Ring',
+                    Exten='600', Context='home')
+        client.emit('Newstate', CallerIDNum='202', Channel=channel,
+                    ChannelState='6', ChannelStateDesc='Up')
+        client.emit('DeviceStateChange', Device='PJSIP/202', State='INUSE')
+        self.assertEqual(connected.state, 'None')
+        self.assertEqual(connected.extra_state_attributes['ConnectedLineNum'], '<unknown>')
+        self.assertEqual(connected.extra_state_attributes['Channel'], channel)
+        self.assertEqual(state.state, 'In use')
+        self.hass.states.async_set('sensor.example_202_connected_line', connected.state,
+                                   connected.extra_state_attributes)
+        self.hass.states.async_set('sensor.example_202_state', state.state)
+        generated = render.build(config())['asterisk.yaml']['script']['asterisk_hangup_202']
+        checked = await async_validate_config_item(self.hass, 'asterisk_hangup_202', generated)
+        script = Script(self.hass, checked['sequence'], 'Synthetic echo hangup', 'script')
+        await script.async_run(context=Context())
+        self.assertEqual(client.actions[-1].name, 'Hangup')
+        self.assertEqual(client.actions[-1].keys, {'Channel': channel})
+        count = len(client.actions)
+        for line, device_state, current_channel in (
+                ('None', 'Not in use', channel),
+                ('None', 'Ringing', channel),
+                ('None', 'In use', 'PJSIP/201-00000000'),
+                ('None', 'In use', ''),
+                ('unknown', 'In use', channel),
+                ('unavailable', 'In use', channel),
+                ('', 'In use', channel)):
+            with self.subTest(line=line, device_state=device_state, channel=current_channel):
+                self.hass.states.async_set('sensor.example_202_connected_line', line,
+                                           {'Channel': current_channel})
+                self.hass.states.async_set('sensor.example_202_state', device_state)
+                await script.async_run(context=Context())
+                self.assertEqual(len(client.actions), count)
+
     async def _assert_generated_yaml_schemas(self, example):
         import yaml
         from homeassistant.components.automation.config import PLATFORM_SCHEMA
