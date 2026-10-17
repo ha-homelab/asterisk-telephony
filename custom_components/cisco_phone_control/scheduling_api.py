@@ -13,7 +13,7 @@ from homeassistant.util import dt as dt_util
 from .api import GatewayError
 from .schedule import start_timer
 
-OPERATIONS = ("status", "timer_start", "timer_cancel", "alarm_set", "alarm_enable", "alarm_disable", "alert_stop")
+OPERATIONS = ("status", "timer_start", "timer_cancel", "alarm_set", "alarm_enable", "alarm_disable", "toggle_saved_alarm", "alert_stop")
 SCHEMA = vol.Schema({
     vol.Required("entry_id"): str,
     vol.Optional("phone"): vol.Match(r"^[0-9]{1,12}$"),
@@ -95,13 +95,18 @@ async def schedule(coordinator, primary, line, operation, **options):
         if previous:
             if previous["fingerprint"] != fingerprint:
                 raise HomeAssistantError("request_id was already used for different schedule inputs")
-            return status(coordinator, primary, line, "replayed" if previous["state"] == "complete" else "outcome_unknown", fresh)
+            replay = "replayed" if previous["state"] == "complete" else "outcome_unknown"
+            if previous.get("result") == "not_configured" and previous["state"] == "complete":
+                replay = "not_configured"
+            return status(coordinator, primary, line, replay, fresh)
         if not fresh and operation not in ("timer_cancel", "alarm_disable"):
             raise HomeAssistantError("Gateway unavailable; schedule change refused")
         alert = phone.get("alert") if fresh else None
         active = alert if alert and alert["state"] != "ended" else None
         replace = options.get("replace", False)
         stop = None
+        stop_line = line
+        result = "applied"
         candidate = copy.deepcopy(settings)
         if operation == "timer_start":
             if active and active["kind"] == "timer":
@@ -124,6 +129,18 @@ async def schedule(coordinator, primary, line, operation, **options):
             candidate["alarm_configured"] = True
             if operation == "alarm_disable":
                 stop = active if active and active["kind"] == "alarm" else None
+        elif operation == "toggle_saved_alarm":
+            # A dialled service identifies the handset, not a new owner for its
+            # saved alarm. Either sibling line may toggle the same saved alarm.
+            if not settings["alarm_configured"]:
+                result = "not_configured"
+            else:
+                if settings["alarm_line"] not in phone["lines"]:
+                    raise HomeAssistantError("The saved alarm line is no longer on this handset")
+                candidate["alarm_enabled"] = not settings["alarm_enabled"]
+                stop_line = settings["alarm_line"]
+                if not candidate["alarm_enabled"]:
+                    stop = active if active and active["kind"] == "alarm" else None
         elif operation == "timer_cancel":
             if settings["timer_line"] != line:
                 raise HomeAssistantError("The timer belongs to the other line")
@@ -131,19 +148,20 @@ async def schedule(coordinator, primary, line, operation, **options):
             stop = active if active and active["kind"] == "timer" else None
         elif operation == "alert_stop":
             stop = active
-        if stop and stop["line"] != line:
+        if stop and stop["line"] != stop_line:
             raise HomeAssistantError("The active alert belongs to the other line")
         candidate["schedule_requests"][request_id] = {"fingerprint": fingerprint, "state": "claimed"}
+        if result == "not_configured":
+            candidate["schedule_requests"][request_id]["result"] = result
         coordinator.settings[primary] = candidate
         try:
             await coordinator._save()
         except Exception:
             coordinator.settings[primary] = settings
             raise HomeAssistantError("Schedule storage failed; no operation was sent") from None
-        result = "applied"
         if stop:
             try:
-                await coordinator.perform(primary, "alert_stop", {"line_filter": line,
+                await coordinator.perform(primary, "alert_stop", {"line_filter": stop_line,
                     "kind_filter": stop["kind"], "alert_id_filter": stop["id"]},
                     "ha-stop-" + hashlib.sha256(f"{primary}:{request_id}".encode()).hexdigest()[:40])
             except HomeAssistantError:

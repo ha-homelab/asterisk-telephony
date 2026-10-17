@@ -73,7 +73,9 @@ def validate_settings(saved):
             raise ValueError("Invalid stored schedule operations")
         for key, request in clean["schedule_requests"].items():
             if (not isinstance(key, str) or not re.fullmatch(r"[A-Za-z0-9_.:-]{8,80}", key)
-                    or not isinstance(request, dict) or set(request) != {"fingerprint", "state"}
+                    or not isinstance(request, dict) or not {"fingerprint", "state"} <= set(request)
+                    or set(request) - {"fingerprint", "state", "result"}
+                    or request.get("result") not in (None, "not_configured")
                     or not re.fullmatch(r"[a-f0-9]{64}", str(request["fingerprint"]))
                     or request["state"] not in ("claimed", "complete")):
                 raise ValueError("Invalid stored schedule request")

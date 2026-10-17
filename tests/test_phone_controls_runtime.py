@@ -55,6 +55,25 @@ class PhoneRuntimeTests(unittest.IsolatedAsyncioTestCase):
             await self.c.perform("201", "answer")
         self.client.action.assert_not_awaited()
 
+    async def test_select_uses_safe_catalog_and_private_room_labels_without_granting_choices(self):
+        from custom_components.cisco_phone_control.select import PhoneSelect, label
+        self.c.data["phones"][0]["room"] = "Example Room"
+        self.c.data["softphones"] = [{"extension": "209", "room": "Example Desktop"}]
+        self.c.data["services"] = [
+            {"number": "641", "label": "Toggle saved alarm", "kind": "automation"},
+            {"number": "803", "label": "The Test Call (English menu)", "kind": "external"}]
+        self.c.data["dial_allowlist"] += ["201", "209", "641"]
+        select = PhoneSelect(self.c, "201", "dial_number", "Dial destination")
+        self.assertIn("641 — Toggle saved alarm", select.options)
+        self.assertIn("201 — Example Room", select.options)
+        self.assertIn("209 — Example Desktop", select.options)
+        self.assertFalse(any(option.startswith("803") for option in select.options))
+        await select.async_select_option("641 — Toggle saved alarm")
+        self.assertEqual(self.c.settings["201"]["dial_number"], "641")
+        self.c.data["services"][0]["label"] = "Unsafe\nlabel"
+        self.assertEqual(label("641", self.c.data), "641 — Toggle saved alarm")
+        self.client.action.assert_not_awaited()
+
     async def test_atomic_secondary_timer_replay_and_sibling_ownership(self):
         from custom_components.cisco_phone_control.scheduling_api import schedule
         from homeassistant.exceptions import HomeAssistantError
@@ -96,6 +115,118 @@ class PhoneRuntimeTests(unittest.IsolatedAsyncioTestCase):
             await schedule(self.c, "201", "201", "alarm_set", time="07:30", weekdays=[1], request_id="alarm-request-005")
         await schedule(self.c, "201", "201", "alarm_set", time="07:30", weekdays=[1], replace=True, request_id="alarm-request-006")
         self.assertEqual(self.c.settings["201"]["alarm_line"], "201")
+
+    async def test_explicit_alarm_time_edit_saves_disabled_alarm_and_captures_owner_once(self):
+        from datetime import time
+        from custom_components.cisco_phone_control.time import AlarmTime
+        from custom_components.cisco_phone_control.switch import PhoneSwitch
+        from custom_components.cisco_phone_control.scheduling_api import schedule
+        self.assertFalse(self.c.settings["201"]["alarm_configured"])
+        await self.c.configure("201", "line", "202")
+        self.assertFalse(self.c.settings["201"]["alarm_configured"])
+        field = AlarmTime(self.c, "201", "alarm_time", "Alarm time")
+        # Even explicitly choosing the displayed default counts as saving it.
+        await field.async_set_value(time(7, 0))
+        self.assertTrue(self.c.settings["201"]["alarm_configured"])
+        self.assertFalse(self.c.settings["201"]["alarm_enabled"])
+        self.assertEqual(self.c.settings["201"]["alarm_line"], "202")
+        persisted = self.c.store.async_save.await_args.args[0]["phones"]["201"]
+        self.assertTrue(persisted["alarm_configured"])
+        self.assertFalse(persisted["alarm_enabled"])
+        await self.c.configure("201", "line", "201")
+        await field.async_set_value(time(8, 15))
+        monday = PhoneSwitch(self.c, "201", "weekday_0", "Monday")
+        await monday.async_turn_off()
+        self.assertEqual(self.c.settings["201"]["alarm_line"], "202")
+        self.assertFalse(self.c.settings["201"]["alarm_enabled"])
+        result = await schedule(self.c, "201", "201", "toggle_saved_alarm", request_id="time-edit-toggle-001")
+        self.assertEqual(result["operation_result"], "applied")
+        self.assertEqual(result["alarm"], {"configured": True, "enabled": True, "line": "202", "time": "08:15", "weekdays": [1, 2, 3, 4]})
+        self.client.action.assert_not_awaited()
+
+    async def test_explicit_weekday_edit_saves_alarm_without_enabling(self):
+        from datetime import time
+        from custom_components.cisco_phone_control.time import AlarmTime
+        from custom_components.cisco_phone_control.switch import PhoneSwitch
+        await self.c.configure("201", "line", "202")
+        saturday = PhoneSwitch(self.c, "201", "weekday_5", "Saturday")
+        await saturday.async_turn_on()
+        settings = self.c.settings["201"]
+        self.assertTrue(settings["alarm_configured"])
+        self.assertFalse(settings["alarm_enabled"])
+        self.assertEqual(settings["alarm_line"], "202")
+        self.assertEqual(settings["weekdays"], [0, 1, 2, 3, 4, 5])
+        await self.c.configure("201", "line", "201")
+        await AlarmTime(self.c, "201", "alarm_time", "Alarm time").async_set_value(time(9, 0))
+        await saturday.async_turn_off()
+        self.assertEqual(settings["alarm_line"], "202")
+        self.assertFalse(settings["alarm_enabled"])
+        self.client.action.assert_not_awaited()
+
+    async def test_toggle_without_saved_alarm_is_persistent_noop(self):
+        from custom_components.cisco_phone_control.scheduling_api import schedule
+        from custom_components.cisco_phone_control.schedule import validate_settings
+        before = copy.deepcopy(self.c.settings["201"])
+        result = await schedule(self.c, "201", "202", "toggle_saved_alarm", request_id="no-saved-alarm-001")
+        self.assertEqual(result["operation_result"], "not_configured")
+        self.assertFalse(result["alarm"]["enabled"])
+        self.assertFalse(result["alarm"]["configured"])
+        self.assertEqual({k: v for k, v in before.items() if k != "schedule_requests"},
+                         {k: v for k, v in self.c.settings["201"].items() if k != "schedule_requests"})
+        self.c.settings = validate_settings(copy.deepcopy(self.c.store.async_save.await_args.args[0]["phones"]))
+        await schedule(self.c, "201", "201", "alarm_set", time="08:30", weekdays=[1, 5], request_id="save-alarm-later-001")
+        replay = await schedule(self.c, "201", "202", "toggle_saved_alarm", request_id="no-saved-alarm-001")
+        self.assertEqual(replay["operation_result"], "not_configured")
+        self.assertFalse(replay["alarm"]["enabled"])
+        self.client.action.assert_not_awaited()
+
+    async def test_toggle_saved_alarm_preserves_owner_and_schedule_once(self):
+        from custom_components.cisco_phone_control.scheduling_api import schedule
+        self.c.settings["201"].update(alarm_configured=True, alarm_line="202", alarm_time="09:45", weekdays=[0, 4])
+        results = await asyncio.gather(*[
+            schedule(self.c, "201", "201", "toggle_saved_alarm", request_id="toggle-saved-001") for _ in range(2)])
+        self.assertEqual({r["operation_result"] for r in results}, {"applied", "replayed"})
+        self.assertTrue(self.c.settings["201"]["alarm_enabled"])
+        self.assertEqual(results[0]["alarm"], {"configured": True, "enabled": True, "line": "202", "time": "09:45", "weekdays": [0, 4]})
+        result = await schedule(self.c, "201", "202", "toggle_saved_alarm", request_id="toggle-saved-002")
+        self.assertFalse(result["alarm"]["enabled"])
+        self.assertEqual(result["alarm"]["line"], "202")
+        self.client.action.assert_not_awaited()
+
+    async def test_toggle_disabling_stops_only_exact_saved_alarm_not_timer(self):
+        from custom_components.cisco_phone_control.scheduling_api import schedule
+        self.c.settings["201"].update(alarm_configured=True, alarm_enabled=True, alarm_line="202")
+        self.data["phones"][0]["alert"] = {"id": "a" * 32, "kind": "alarm", "line": "202", "state": "ringing", "reason": None}
+        result = await schedule(self.c, "201", "201", "toggle_saved_alarm", request_id="toggle-stop-001")
+        self.assertFalse(result["alarm"]["enabled"])
+        args = self.client.action.await_args.args
+        self.assertEqual(args[0:2], ("201", "alert_stop"))
+        self.assertEqual(args[2], {"alert_id": "a" * 32})
+        self.client.action.reset_mock()
+        self.c.settings["201"]["alarm_enabled"] = True
+        self.data["phones"][0]["alert"].update(kind="timer", line="201")
+        await schedule(self.c, "201", "201", "toggle_saved_alarm", request_id="toggle-stop-002")
+        self.client.action.assert_not_awaited()
+
+    async def test_toggle_storage_or_stop_failure_does_not_retry(self):
+        from custom_components.cisco_phone_control.scheduling_api import schedule
+        from homeassistant.exceptions import HomeAssistantError
+        self.c.settings["201"].update(alarm_configured=True, alarm_enabled=True, alarm_line="202")
+        before = copy.deepcopy(self.c.settings)
+        self.c.store.async_save.side_effect = OSError("disk full")
+        with self.assertRaises(HomeAssistantError):
+            await schedule(self.c, "201", "201", "toggle_saved_alarm", request_id="toggle-fail-001")
+        self.assertEqual(self.c.settings, before)
+        self.client.action.assert_not_awaited()
+        self.c.store.async_save.side_effect = None
+        self.data["phones"][0]["alert"] = {"id": "a" * 32, "kind": "alarm", "line": "202", "state": "ringing", "reason": None}
+        self.c.perform = AsyncMock(side_effect=HomeAssistantError("unknown"))
+        first = await schedule(self.c, "201", "201", "toggle_saved_alarm", request_id="toggle-fail-002")
+        second = await schedule(self.c, "201", "201", "toggle_saved_alarm", request_id="toggle-fail-002")
+        self.assertEqual(first["operation_result"], "outcome_unknown")
+        self.assertEqual(second["operation_result"], "outcome_unknown")
+        self.assertFalse(second["alarm"]["enabled"])
+        self.c.perform.assert_awaited_once()
 
     async def test_atomic_stop_refuses_sibling_and_changed_alert(self):
         from custom_components.cisco_phone_control.scheduling_api import schedule

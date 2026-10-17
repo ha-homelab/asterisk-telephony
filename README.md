@@ -80,6 +80,7 @@ second line's status and Hangup control; see [two lines on one handset](docs/con
 ## Documentation
 
 - [Cisco Phone Control: calls, alarms, timers, text and pictures](docs/phone-controls.md)
+- [Dial 641 to toggle a saved alarm](docs/dialled-alarm.md)
 - [Installation with SHA-256 verification and rollback](docs/installation.md)
 - [HACS without a second installer](docs/hacs.md)
 - [HA Container, PVC, and host networking in k3s](docs/ha-container-k3s.md)

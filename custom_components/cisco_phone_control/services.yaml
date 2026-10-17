@@ -53,7 +53,7 @@ send_image:
         text:
 schedule:
   name: Manage a line's schedule
-  description: Atomic administrator operation with a response. Each handset has one timer and one weekday alarm. Changing a sibling line's slot requires explicit replacement. Never automatically retry an unknown outcome.
+  description: Atomic administrator operation with a response. Each handset has one timer and one weekday alarm. Changing a sibling line's slot requires explicit replacement. The toggle_saved_alarm operation toggles an existing alarm from either handset line without changing its owner, time or days; it does not create an alarm. Never automatically retry an unknown outcome.
   fields:
     entry_id:
       name: Integration
@@ -75,7 +75,7 @@ schedule:
       required: true
       selector:
         select:
-          options: [status, timer_start, timer_cancel, alarm_set, alarm_enable, alarm_disable, alert_stop]
+          options: [status, timer_start, timer_cancel, alarm_set, alarm_enable, alarm_disable, toggle_saved_alarm, alert_stop]
     request_id:
       name: Stable request ID
       description: Required for changes. Reusing an ID returns its result without repeating the operation.

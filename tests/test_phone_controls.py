@@ -90,6 +90,17 @@ class ScheduleTests(unittest.TestCase):
         self.settings = schedule.defaults("201")
         self.start = self.now.timestamp() - 3600
 
+    def test_no_alarm_idempotency_result_survives_storage(self):
+        value = copy.deepcopy(self.settings)
+        value["schedule_requests"]["dial-alarm-example-001"] = {
+            "fingerprint": "a" * 64, "state": "complete", "result": "not_configured"}
+        restored = schedule.validate_settings({"201": value})["201"]
+        self.assertEqual(restored["schedule_requests"], value["schedule_requests"])
+        self.assertFalse(restored["alarm_configured"])
+        value["schedule_requests"]["dial-alarm-example-001"]["result"] = "guessed"
+        with self.assertRaises(ValueError):
+            schedule.validate_settings({"201": value})
+
     def test_alarm_claim_once_and_persists_across_restart(self):
         self.settings["alarm_enabled"] = True
         first = schedule.pending(self.settings, "201", self.now, self.start)

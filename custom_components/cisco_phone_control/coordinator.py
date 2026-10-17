@@ -69,7 +69,10 @@ class PhoneCoordinator(DataUpdateCoordinator):
 
     async def configure(self, primary, key, value):
         async with self._settings_lock:
-            if key == "alarm_enabled" and value is True and not self.settings[primary]["alarm_configured"]:
+            # A deliberate time/day edit saves the displayed schedule without
+            # enabling it. Capture ownership once; later edits keep that owner.
+            saves_alarm = key in ("alarm_time", "weekdays") or key == "alarm_enabled" and value is True
+            if saves_alarm and not self.settings[primary]["alarm_configured"]:
                 self.settings[primary]["alarm_line"] = self.settings[primary]["line"]
                 self.settings[primary]["alarm_configured"] = True
             self.settings[primary][key] = value

@@ -1,7 +1,7 @@
 {
   "domain": "cisco_phone_control",
   "name": "Cisco phone controls",
-  "version": "0.3.0",
+  "version": "0.4.0",
   "codeowners": ["@4alvit"],
   "config_flow": true,
   "documentation": "https://github.com/ha-homelab/asterisk-telephony/blob/main/docs/phone-controls.md",
