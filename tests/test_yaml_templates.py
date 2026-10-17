@@ -12,9 +12,10 @@ except ImportError:
 @unittest.skipIf(yaml is None or Environment is None, 'Install requirements-test.txt for YAML/Jinja validation')
 class TemplateTests(unittest.TestCase):
     def test_all_output_yaml_roundtrips_without_type_changes(self):
-        for name, document in render.build(config()).items():
-            with self.subTest(file=name):
-                self.assertEqual(yaml.safe_load(render.yaml_text(document)), document)
+        for example in ('site.example.json', 'site.single-phone.example.json'):
+            for name, document in render.build(config(example)).items():
+                with self.subTest(example=example, file=name):
+                    self.assertEqual(yaml.safe_load(render.yaml_text(document)), document)
     def test_hangup_only_for_active_own_channel(self):
         seq = render.build(config())['asterisk.yaml']['script']['asterisk_hangup_201']['sequence']
         for channel, line, desc, expected in [

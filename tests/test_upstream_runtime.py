@@ -175,6 +175,12 @@ class UpstreamRuntimeTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(dtmf.state, last_timestamp)
 
     async def test_generated_yaml_passes_actual_ha_script_and_automation_schemas(self):
+        await self._assert_generated_yaml_schemas('site.example.json')
+
+    async def test_single_phone_yaml_passes_actual_ha_script_and_automation_schemas(self):
+        await self._assert_generated_yaml_schemas('site.single-phone.example.json')
+
+    async def _assert_generated_yaml_schemas(self, example):
         import yaml
         from homeassistant.components.automation.config import PLATFORM_SCHEMA
         from homeassistant.components.homeassistant.triggers.state import TRIGGER_STATE_SCHEMA
@@ -185,7 +191,7 @@ class UpstreamRuntimeTests(unittest.IsolatedAsyncioTestCase):
         spec = importlib.util.spec_from_file_location("runtime_renderer", root / "scripts/render.py")
         renderer = importlib.util.module_from_spec(spec)
         spec.loader.exec_module(renderer)
-        configuration = json.loads((root / "examples/site.example.json").read_text())
+        configuration = json.loads((root / "examples" / example).read_text())
         for phone in configuration["phones"]:
             for key in phone["entities"]:
                 domain = "binary_sensor" if key == "registered" else "sensor"

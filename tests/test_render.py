@@ -9,8 +9,8 @@ ROOT = Path(__file__).resolve().parents[1]
 spec = importlib.util.spec_from_file_location('render', ROOT / 'scripts/render.py')
 render = importlib.util.module_from_spec(spec); spec.loader.exec_module(render)
 
-def config():
-    value = json.loads((ROOT / 'examples/site.example.json').read_text())
+def config(example='site.example.json'):
+    value = json.loads((ROOT / 'examples' / example).read_text())
     for phone in value['phones']:
         for key in phone['entities']:
             domain = 'binary_sensor' if key == 'registered' else 'sensor'
@@ -18,6 +18,54 @@ def config():
     return value
 
 class RendererTests(unittest.TestCase):
+    def test_single_phone_keeps_assist_hangup_privacy_and_disabled_dtmf(self):
+        output = render.build(config('site.single-phone.example.json'))
+        package = output['asterisk.yaml']
+        self.assertEqual(set(package['script']), {'asterisk_call_assist', 'asterisk_hangup_201'})
+        params = package['script']['asterisk_call_assist']['sequence'][0]['data']['parameters']
+        self.assertEqual(params['Channel'], 'PJSIP/201')
+        self.assertEqual(params['Exten'], '630')
+        self.assertEqual(params['Context'], 'home')
+        dashboard = output['asterisk_dashboard.yaml']['views'][0]['cards']
+        self.assertEqual(len(dashboard[1]['entities']), 5)
+        self.assertEqual([card['tap_action']['perform_action'] for card in dashboard[-1]['cards']],
+                         ['script.asterisk_call_assist', 'script.asterisk_hangup_201'])
+        self.assertTrue(all(card['tap_action']['confirmation']['text'] for card in dashboard[-1]['cards']))
+        self.assertFalse(package['automation'][0]['initial_state'])
+        self.assertEqual(package['automation'][0]['triggers'][0]['entity_id'], 'sensor.example_201_dtmf_received')
+        self.assertEqual(set(output['asterisk_privacy.yaml']['recorder']['exclude']['entities']),
+                         {'sensor.example_201_connected_line', 'sensor.example_201_dtmf_sent', 'sensor.example_201_dtmf_received'})
+        self.assertNotIn('202', json.dumps(output))
+    def test_null_call_to_can_disable_pair_control_without_removing_mapped_phones(self):
+        value = config(); value['call_to'] = None
+        scripts = render.build(value)['asterisk.yaml']['script']
+        self.assertEqual(set(scripts), {'asterisk_call_assist', 'asterisk_hangup_201', 'asterisk_hangup_202'})
+    def test_single_phone_requires_explicit_null_instead_of_unmapped_destination(self):
+        for target in ('202', '201', '', 'null', False, 0, [], {}):
+            with self.subTest(target=target):
+                value = config('site.single-phone.example.json'); value['call_to'] = target
+                with self.assertRaises(ValueError): render.build(value)
+        value = config('site.single-phone.example.json'); del value['call_to']
+        with self.assertRaises(ValueError): render.build(value)
+    def test_single_phone_still_requires_real_source_mapping_and_distinct_assist(self):
+        for field, value in [('call_from', '202'), ('call_from', None), ('assist_extension', '201'), ('assist_extension', None)]:
+            with self.subTest(field=field, value=value):
+                data = config('site.single-phone.example.json'); data[field] = value
+                with self.assertRaises(ValueError): render.build(data)
+        data = config('site.single-phone.example.json'); data['phones'] = []
+        with self.assertRaises(ValueError): render.build(data)
+    def test_single_phone_requires_all_five_actual_entity_ids(self):
+        for key in render.ENTITY_KEYS:
+            with self.subTest(missing_key=key):
+                value = config('site.single-phone.example.json'); del value['phones'][0]['entities'][key]
+                with self.assertRaises(ValueError): render.build(value)
+        with self.assertRaises(ValueError):
+            render.build(json.loads((ROOT / 'examples/site.single-phone.example.json').read_text()))
+    def test_pair_call_still_requires_two_distinct_mapped_endpoints(self):
+        for field, value in [('call_to', '201'), ('call_to', '203'), ('assist_extension', '202')]:
+            with self.subTest(field=field, value=value):
+                data = config(); data[field] = value
+                with self.assertRaises(ValueError): render.build(data)
     def test_originate_rings_source_then_dials_destination(self):
         output = render.build(config())
         action = output['asterisk.yaml']['script']['asterisk_call_pair']['sequence'][0]

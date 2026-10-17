@@ -9,8 +9,9 @@ using a naming pattern.
 
 Open Devices & services → Asterisk → the phone device → Entities and copy the
 actual IDs. Registered uses the `binary_sensor` domain; the others use `sensor`.
-Fill in all five fields for each phone in `.local/site.json`. Start with two
-phones; add the others in the same way.
+Fill in all five fields for each real phone in `.local/site.json`. The generator
+accepts 1–50 phones. Start with the single-phone pilot below, or use
+`examples/site.example.json` for two phones; add other real phones in the same way.
 
 Upstream derives Registered from device state, not a complete audit of SIP
 ContactStatus. State describes the endpoint state. Connected Line represents
@@ -26,6 +27,37 @@ fields, placeholders, unsuitable domains, duplicate IDs, and unsafe contexts
 or extensions. Use a fresh output directory on each run: existing files are
 not overwritten. These are syntax checks; the user must confirm that the
 entities actually exist in HA.
+
+## Single-phone pilot
+
+Use the dedicated example when only one physical phone has been verified:
+
+```bash
+umask 077
+mkdir -p .local
+cp examples/site.single-phone.example.json .local/site.single-phone.json
+# Replace every entity placeholder with the actual HA registry ID.
+python3 scripts/render.py --input .local/site.single-phone.json --output .local/rendered-single-phone
+```
+
+Keep `call_to` explicitly `null` (JSON null, not the string `"null"`). This omits
+`script.asterisk_call_pair` and its dashboard button. The package still contains
+the Assist call script, guarded Hangup script, all five mapped phone entities,
+privacy exclusions, and disabled DTMF notification example. It does not create
+a second phone or loosen the requirement for actual entity IDs.
+
+`call_from` must name a mapped phone, and `assist_extension` must be a distinct
+number that does not belong to any mapped phone. Assist still requires a tested
+SIP/media path; generating the button does not establish that it works.
+Keep DTMF automation disabled until its real event direction is verified.
+
+To add pair calling later, add the second phone's five actual entity IDs and
+set `call_to` to its distinct extension string. Render into a fresh directory,
+review the result, and replace the previous generated package and dashboard
+after backing them up. Do not install both generated packages together.
+Conversely, if pair calling is disabled after an earlier installation, replace
+the old owned package rather than merging its obsolete call-pair script into
+the new one. Existing two-phone configurations need no changes.
 
 ## Installing the files
 
@@ -62,7 +94,7 @@ the `asterisk_` prefix; check for duplicate keys in other packages.
 
 ## Call control
 
-`script.asterisk_call_pair` uses `asterisk.send_action` with
+When `call_to` names a second mapped phone, `script.asterisk_call_pair` uses `asterisk.send_action` with
 `action: Originate` and `parameters: {Channel, Context, Exten, Priority, CallerID,
 Timeout, Async}`. The PBX setting `allow_originate:true` is required.
 Similarly, `script.asterisk_call_assist` rings the selected phone first, then

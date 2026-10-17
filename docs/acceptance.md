@@ -16,7 +16,8 @@ or external phone numbers.
 ## 2. Discovery and state
 
 - Registered, State, Connected Line, DTMF Sent, and DTMF Received entities appear
-  for two existing PJSIP endpoints. All IDs have been checked manually.
+  for every configured real PJSIP endpoint: one for a single-phone pilot, at
+  least two for pair calling. All IDs have been checked manually.
 - Taking a physical phone offline and online is compared with PBX contacts and HA state.
 - Starting, connecting, and ending a call changes the observed states.
 - After a temporary AMI disconnection, the connection recovers. A real event
@@ -24,7 +25,10 @@ or external phone numbers.
 
 ## 3. Call control
 
-- `asterisk_call_pair` rings source phone 201. After answer, it rings 202.
+- With `call_to:null`, the package and dashboard have no pair-call script or
+  button. Only the mapped phone's Assist and Hangup controls appear.
+- When two phones are configured, `asterisk_call_pair` rings source phone 201.
+  After answer, it rings 202. Defer this check during a single-phone pilot.
 - Canceling the dashboard confirmation does not start a call.
 - A PBX with `allow_originate:false` rejects Originate. This does not make the
   account completely read-only: Hangup and ModuleLoad are included in `system`.
@@ -35,6 +39,8 @@ or external phone numbers.
 
 ## 4. DTMF
 
+- With one phone, leave the example disabled and record pair-call DTMF tests as
+  deferred. Do not add a fictional endpoint to satisfy the checklist.
 - During a 201↔202 call, press the selected test digit on each handset in turn.
 - Record which actual Sent/Received sensor changes its timestamp and Digit.
 - Correct the mapping, enable the notification automation, and repeat the test.

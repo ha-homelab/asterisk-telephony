@@ -17,7 +17,8 @@ is not redistributed here.
   prepares a staging directory. It does not restart HA or change the cluster.
 - The generator creates an HA package, a separate privacy package, and a
   dashboard using **actual entity IDs** supplied from your HA instance.
-  It does not need the AMI password.
+  It does not need the AMI password. A single-phone pilot uses `call_to:null`
+  and includes Assist and Hangup controls without a fictional second phone.
 - The call script rings **201** first, then connects it to **202** after answer.
   Hangup reads the current `Channel` attribute and checks for a connected call.
 - The DTMF example only displays a notification inside HA and is disabled by default.
@@ -51,6 +52,10 @@ cp examples/site.example.json .local/site.json
 # Enter the actual entity IDs in .local/site.json.
 python3 scripts/render.py --input .local/site.json --output .local/rendered
 ```
+
+For one verified phone, start from `examples/site.single-phone.example.json`
+instead. Keep `call_to:null` and fill all five real entity IDs; the pair-call
+script and button are omitted. See the [single-phone pilot instructions](docs/configuration.md#single-phone-pilot).
 
 5. Install the three generated YAML files using the
    [package and dashboard instructions](docs/configuration.md), run a config

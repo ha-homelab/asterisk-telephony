@@ -17,11 +17,14 @@ def validate(config):
     require(isinstance(config, dict) and set(config) == ROOT_KEYS, 'Input keys do not match examples/site.example.json')
     require(type(config['schema_version']) is int and config['schema_version'] == 1, 'schema_version must be 1')
     require(isinstance(config['dialplan_context'], str) and re.fullmatch(r'[A-Za-z0-9_-]{1,64}', config['dialplan_context']), 'Invalid dialplan_context')
-    for k in ('call_from', 'call_to', 'assist_extension'):
+    extension_keys = ['call_from', 'assist_extension']
+    if config['call_to'] is not None:
+        extension_keys.append('call_to')
+    for k in extension_keys:
         require(isinstance(config[k], str) and re.fullmatch(r'[2-9][0-9]{2,5}', config[k]), 'Extensions must be strings of 3–6 digits, starting 2–9')
-    require(len({config['call_from'], config['call_to'], config['assist_extension']}) == 3, 'Call endpoints and Assist number must be different')
+    require(len({config[k] for k in extension_keys}) == len(extension_keys), 'Call endpoints and Assist number must be different')
     phones = config['phones']
-    require(isinstance(phones, list) and 2 <= len(phones) <= 50, 'Provide 2–50 phones')
+    require(isinstance(phones, list) and 1 <= len(phones) <= 50, 'Provide 1–50 phones; use call_to: null to omit pair calling')
     extensions, entities = set(), set()
     for phone in phones:
         require(isinstance(phone, dict) and set(phone) == {'extension', 'name', 'entities'}, 'Invalid phone keys')
@@ -37,7 +40,7 @@ def validate(config):
             require(isinstance(entity, str) and re.fullmatch(domain + r'\.[a-z0-9_]+', entity), 'Replace every entity ID from the actual HA entity registry')
             require('replace' not in entity.lower() and entity not in entities, 'Placeholder or duplicate entity ID')
             entities.add(entity)
-    require(config['call_from'] in extensions and config['call_to'] in extensions, 'Call endpoints must have phone mappings')
+    require(config['call_from'] in extensions and (config['call_to'] is None or config['call_to'] in extensions), 'Call endpoints must have phone mappings')
     require(config['assist_extension'] not in extensions, 'Assist number collides with a phone')
     dtmf = config['dtmf']
     require(isinstance(dtmf, dict) and set(dtmf) == {'phone_extension', 'sensor', 'digit', 'enabled'}, 'Invalid dtmf keys')
@@ -55,10 +58,10 @@ def build(config):
     validate(config)
     phones = {p['extension']: p for p in config['phones']}
     src, dst = config['call_from'], config['call_to']
-    scripts = {
-        'asterisk_call_pair': {'alias': f'Asterisk: call {src}, then {dst}', 'mode': 'single', 'sequence': [originate(config, src, dst)]},
-        'asterisk_call_assist': {'alias': f'Asterisk: call {src}, then Assist {config["assist_extension"]}', 'mode': 'single', 'sequence': [originate(config, src, config['assist_extension'])]},
-    }
+    scripts = {}
+    if dst is not None:
+        scripts['asterisk_call_pair'] = {'alias': f'Asterisk: call {src}, then {dst}', 'mode': 'single', 'sequence': [originate(config, src, dst)]}
+    scripts['asterisk_call_assist'] = {'alias': f'Asterisk: call {src}, then Assist {config["assist_extension"]}', 'mode': 'single', 'sequence': [originate(config, src, config['assist_extension'])]}
     rows = []
     private_entities = []
     for ext, phone in phones.items():
@@ -90,7 +93,11 @@ def build(config):
             'message': 'The configured DTMF test was received. No device was controlled.'}}],
     }]}
     buttons = []
-    for service, title in [('asterisk_call_pair', f'Call {src}, then {dst}'), ('asterisk_call_assist', f'Call {src}, then Assist')]:
+    call_buttons = []
+    if dst is not None:
+        call_buttons.append(('asterisk_call_pair', f'Call {src}, then {dst}'))
+    call_buttons.append(('asterisk_call_assist', f'Call {src}, then Assist'))
+    for service, title in call_buttons:
         buttons.append({'type': 'button', 'name': title, 'icon': 'mdi:phone', 'tap_action': {
             'action': 'perform-action', 'perform_action': 'script.' + service, 'confirmation': {'text': title + '? This rings a phone.'}}})
     for ext in phones:

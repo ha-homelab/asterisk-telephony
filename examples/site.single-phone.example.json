@@ -1,0 +1,17 @@
+{
+  "schema_version": 1,
+  "dialplan_context": "home",
+  "call_from": "201",
+  "call_to": null,
+  "assist_extension": "630",
+  "dtmf": {"phone_extension": "201", "sensor": "received", "digit": "5", "enabled": false},
+  "phones": [
+    {"extension": "201", "name": "Phone 201", "entities": {
+      "registered": "REPLACE_FROM_HA_REGISTRY",
+      "state": "REPLACE_FROM_HA_REGISTRY",
+      "connected_line": "REPLACE_FROM_HA_REGISTRY",
+      "dtmf_sent": "REPLACE_FROM_HA_REGISTRY",
+      "dtmf_received": "REPLACE_FROM_HA_REGISTRY"
+    }}
+  ]
+}
