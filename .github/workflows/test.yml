@@ -1,0 +1,42 @@
+name: Contract tests
+on:
+  push:
+  pull_request:
+permissions:
+  contents: read
+jobs:
+  test:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+      - name: Install test parsers in an isolated environment
+        run: |
+          python3 -m venv .venv
+          .venv/bin/python -m pip install --disable-pip-version-check -r requirements-test.txt
+      - name: Unit tests (no secrets, no live services, no deployment)
+        run: .venv/bin/python -m unittest discover -s tests -v
+      - name: Python syntax
+        run: python3 -m compileall -q scripts tests
+      - name: Diagram XML
+        run: python3 scripts/build_diagrams.py --check
+  home-assistant-runtime:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
+        with:
+          python-version: '3.14.7'
+      - name: Install pinned Home Assistant runtime in an isolated environment
+        run: |
+          python -m venv .local/runtime-venv
+          .local/runtime-venv/bin/python -m pip install --disable-pip-version-check -r requirements-runtime.txt
+      - name: Download and verify pinned integration (staging only)
+        run: python scripts/stage_integration.py --stage .local/runtime-upstream
+      - name: Exercise real HA schemas and registry with modeled AMI
+        env:
+          ASTERISK_UPSTREAM_ROOT: ${{ github.workspace }}/.local/runtime-upstream
+        run: |
+          .local/runtime-venv/bin/python -c "import sys; sys.path.insert(0, 'tests'); from test_upstream_runtime import RUNTIME_READY; assert RUNTIME_READY, 'Runtime suite must not skip in this job'"
+          .local/runtime-venv/bin/python -m unittest discover -s tests -p test_upstream_runtime.py -v

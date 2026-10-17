@@ -1,0 +1,11 @@
+# ILLUSTRATION ONLY. example_* entity IDs are synthetic, not upstream defaults.
+# Do not install this file. Run scripts/render.py with your actual HA registry IDs.
+"recorder":
+  "exclude":
+    "entities":
+      - "sensor.example_201_connected_line"
+      - "sensor.example_201_dtmf_sent"
+      - "sensor.example_201_dtmf_received"
+      - "sensor.example_202_connected_line"
+      - "sensor.example_202_dtmf_sent"
+      - "sensor.example_202_dtmf_received"

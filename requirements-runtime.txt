@@ -1,0 +1,5 @@
+# Optional compatibility suite; Python >=3.14.2 is required by this HA release.
+# Install only in a disposable venv, not into an existing Home Assistant runtime.
+homeassistant==2026.10.2
+asterisk-ami==0.1.7
+voluptuous==0.15.2

@@ -1,0 +1,88 @@
+# ILLUSTRATION ONLY. example_* entity IDs are synthetic, not upstream defaults.
+# Do not install this file. Run scripts/render.py with your actual HA registry IDs.
+"script":
+  "asterisk_call_pair":
+    "alias": "Asterisk: call 201, then 202"
+    "mode": "single"
+    "sequence":
+      -
+        "action": "asterisk.send_action"
+        "data":
+          "action": "Originate"
+          "parameters":
+            "Channel": "PJSIP/201"
+            "Context": "home"
+            "Exten": "202"
+            "Priority": "1"
+            "CallerID": "Home Assistant <201>"
+            "Timeout": "20000"
+            "Async": "true"
+  "asterisk_call_assist":
+    "alias": "Asterisk: call 201, then Assist 630"
+    "mode": "single"
+    "sequence":
+      -
+        "action": "asterisk.send_action"
+        "data":
+          "action": "Originate"
+          "parameters":
+            "Channel": "PJSIP/201"
+            "Context": "home"
+            "Exten": "630"
+            "Priority": "1"
+            "CallerID": "Home Assistant <201>"
+            "Timeout": "20000"
+            "Async": "true"
+  "asterisk_hangup_201":
+    "alias": "Asterisk: end connected call on 201"
+    "mode": "single"
+    "sequence":
+      -
+        "variables":
+          "channel": "{{ state_attr('sensor.example_201_connected_line', 'Channel') | default('', true) }}"
+      -
+        "condition": "template"
+        "value_template": "{{ channel is string and channel.startswith('PJSIP/201-') and states('sensor.example_201_connected_line') not in ['None', 'unknown', 'unavailable', ''] and state_attr('sensor.example_201_connected_line', 'ChannelStateDesc') == 'Up' }}"
+      -
+        "action": "asterisk.send_action"
+        "data":
+          "action": "Hangup"
+          "parameters":
+            "Channel": "{{ channel }}"
+  "asterisk_hangup_202":
+    "alias": "Asterisk: end connected call on 202"
+    "mode": "single"
+    "sequence":
+      -
+        "variables":
+          "channel": "{{ state_attr('sensor.example_202_connected_line', 'Channel') | default('', true) }}"
+      -
+        "condition": "template"
+        "value_template": "{{ channel is string and channel.startswith('PJSIP/202-') and states('sensor.example_202_connected_line') not in ['None', 'unknown', 'unavailable', ''] and state_attr('sensor.example_202_connected_line', 'ChannelStateDesc') == 'Up' }}"
+      -
+        "action": "asterisk.send_action"
+        "data":
+          "action": "Hangup"
+          "parameters":
+            "Channel": "{{ channel }}"
+"automation":
+  -
+    "id": "asterisk_dtmf_test_notification"
+    "alias": "Asterisk: safe DTMF test notification"
+    "initial_state": false
+    "mode": "single"
+    "triggers":
+      -
+        "trigger": "state"
+        "entity_id": "sensor.example_201_dtmf_received"
+    "conditions":
+      -
+        "condition": "template"
+        "value_template": "{{ trigger.from_state is not none and trigger.to_state is not none and trigger.to_state.state not in ['unknown', 'unavailable', 'None', ''] and trigger.from_state.state != trigger.to_state.state and trigger.to_state.attributes.get('Digit') == '5' and trigger.to_state.attributes.get('Context') == 'home' }}"
+    "actions":
+      -
+        "action": "persistent_notification.create"
+        "data":
+          "notification_id": "asterisk_dtmf_test"
+          "title": "Asterisk DTMF test"
+          "message": "The configured DTMF test was received. No device was controlled."

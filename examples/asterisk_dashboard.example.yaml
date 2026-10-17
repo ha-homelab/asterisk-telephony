@@ -1,0 +1,92 @@
+# ILLUSTRATION ONLY. example_* entity IDs are synthetic, not upstream defaults.
+# Do not install this file. Run scripts/render.py with your actual HA registry IDs.
+"title": "Asterisk telephony"
+"views":
+  -
+    "title": "Phones"
+    "path": "phones"
+    "cards":
+      -
+        "type": "markdown"
+        "content": "## Local telephony\nRegistered is derived from device state. Connected Line shows the latest channel, not a complete call ledger. Assist requires a tested media path."
+      -
+        "type": "entities"
+        "title": "Phone 201"
+        "show_header_toggle": false
+        "entities":
+          -
+            "entity": "binary_sensor.example_201_registered"
+            "name": "201: registered (derived)"
+          -
+            "entity": "sensor.example_201_state"
+            "name": "Device state"
+          -
+            "entity": "sensor.example_201_connected_line"
+            "name": "Connected line"
+          -
+            "entity": "sensor.example_201_dtmf_sent"
+            "name": "DTMF sent: last event"
+          -
+            "entity": "sensor.example_201_dtmf_received"
+            "name": "DTMF received: last event"
+      -
+        "type": "entities"
+        "title": "Phone 202"
+        "show_header_toggle": false
+        "entities":
+          -
+            "entity": "binary_sensor.example_202_registered"
+            "name": "202: registered (derived)"
+          -
+            "entity": "sensor.example_202_state"
+            "name": "Device state"
+          -
+            "entity": "sensor.example_202_connected_line"
+            "name": "Connected line"
+          -
+            "entity": "sensor.example_202_dtmf_sent"
+            "name": "DTMF sent: last event"
+          -
+            "entity": "sensor.example_202_dtmf_received"
+            "name": "DTMF received: last event"
+      -
+        "type": "grid"
+        "columns": 2
+        "square": false
+        "cards":
+          -
+            "type": "button"
+            "name": "Call 201, then 202"
+            "icon": "mdi:phone"
+            "tap_action":
+              "action": "perform-action"
+              "perform_action": "script.asterisk_call_pair"
+              "confirmation":
+                "text": "Call 201, then 202? This rings a phone."
+          -
+            "type": "button"
+            "name": "Call 201, then Assist"
+            "icon": "mdi:phone"
+            "tap_action":
+              "action": "perform-action"
+              "perform_action": "script.asterisk_call_assist"
+              "confirmation":
+                "text": "Call 201, then Assist? This rings a phone."
+          -
+            "type": "button"
+            "name": "Hang up 201"
+            "icon": "mdi:phone-hangup"
+            "tap_action":
+              "action": "perform-action"
+              "perform_action": "script.asterisk_hangup_201"
+              "confirmation":
+                "text": "End the connected call on 201?"
+          -
+            "type": "button"
+            "name": "Hang up 202"
+            "icon": "mdi:phone-hangup"
+            "tap_action":
+              "action": "perform-action"
+              "perform_action": "script.asterisk_hangup_202"
+              "confirmation":
+                "text": "End the connected call on 202?"

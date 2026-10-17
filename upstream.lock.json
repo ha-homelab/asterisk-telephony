@@ -1,0 +1,10 @@
+{
+  "repository": "TECH7Fox/asterisk-hass-integration",
+  "version": "1.0.5",
+  "commit": "65ea9d637a58d6edb3b2bc9e8a6f90de896a9b3e",
+  "url": "https://github.com/TECH7Fox/asterisk-hass-integration/archive/65ea9d637a58d6edb3b2bc9e8a6f90de896a9b3e.zip",
+  "sha256": "697792a522eb90db62672ff57bc0b03bec4caba45c0748583bdd32768e6dcad1",
+  "archive_bytes": 82594,
+  "source_prefix": "asterisk-hass-integration-65ea9d637a58d6edb3b2bc9e8a6f90de896a9b3e/custom_components/asterisk/",
+  "verified_date": "2026-10-16"
+}

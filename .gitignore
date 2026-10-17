@@ -1,0 +1,9 @@
+.local/
+__pycache__/
+*.py[cod]
+.venv/
+.DS_Store
+*.zip
+*.log
+secrets.yaml
+.storage/
