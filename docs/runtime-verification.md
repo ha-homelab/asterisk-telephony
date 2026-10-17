@@ -7,6 +7,13 @@ upstream TECH7Fox `v1.0.5` / commit
 Использованы исходники из архива, проверенного по [upstream.lock.json](../upstream.lock.json).
 Все четыре теста [test_upstream_runtime.py](../tests/test_upstream_runtime.py) прошли.
 
+Тот же набор прошёл на Linux amd64 в
+[GitHub Actions](https://github.com/ha-homelab/asterisk-telephony/actions/runs/39005310862):
+26 проверок генератора/установщика и отдельно четыре проверки HA runtime.
+Проверка [Asterisk-контейнера](https://github.com/4alvit/cisco-home-telephony/actions/runs/39005213169)
+также прошла: 20 unit-тестов, сборка образов и изолированный smoke с настоящими
+AMI, G.711/Opus translation, маршрутом Assist и TFTP.
+
 Проверены следующие границы API:
 
 - Форма настройки upstream сериализуется текущим HA/Probatio; содержит host,

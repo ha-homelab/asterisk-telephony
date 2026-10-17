@@ -58,10 +58,12 @@ extension `202` в `home`. Это не одновременный вызов д�
 нашем профиле использует G.711. Нужен **реальный двусторонний transcoder**
 G.711↔Opus в Asterisk. Наличие `opus` в списке formats или SDP pass-through
 само по себе не подтверждает transcoding. На PBX проверьте модули, translation
-path и живой звонок со звуком. В PBX-проекте проверен Wazo codec_opus на Asterisk 22.11.0 / ARM64: модуль
-загружается и оба translation paths доступны. Это не проверка amd64-сборки
-домашнего узла и не приёмка реального разговора. На своей архитектуре повторите
-проверку модуля, translation и живого аудио.
+path и живой звонок со звуком. В PBX-проекте проверен Wazo codec_opus на
+Asterisk 22.11.0: локально на ARM64 и в
+[GitHub Actions на amd64](https://github.com/4alvit/cisco-home-telephony/actions/runs/39005213169).
+Модуль загружается, оба translation paths доступны; также прошли AMI actions,
+проверка маршрута 630 и TFTP. Это не приёмка реального разговора. На домашнем
+узле повторите проверку модуля, translation и живого аудио.
 
 Добавьте Voice over IP через Devices & services, настройте Assist pipeline,
 совершите пробный вызов 630 и разрешите обнаруженному телефонному устройству
