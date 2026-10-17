@@ -1,4 +1,4 @@
-# Проверка совместимости с Home Assistant 2026.10.2
+# Проверка совместимости с Home Assistant 2026.10.0 и 2026.10.2
 
 16 октября 2026 года в одноразовом Python 3.14.7 virtualenv проверен неизменённый
 upstream TECH7Fox `v1.0.5` / commit
@@ -6,6 +6,11 @@ upstream TECH7Fox `v1.0.5` / commit
 `homeassistant==2026.10.2`, `asterisk-ami==0.1.7` и `voluptuous==0.15.2`.
 Использованы исходники из архива, проверенного по [upstream.lock.json](../upstream.lock.json).
 Все четыре теста [test_upstream_runtime.py](../tests/test_upstream_runtime.py) прошли.
+
+17 октября тот же набор прошёл с `homeassistant==2026.10.0` перед установкой
+на HA этой версии. CI проверяет обе версии в отдельных изолированных окружениях.
+Для повторения с 2026.10.0 используйте `requirements-runtime-2026.10.0.txt`
+вместо `requirements-runtime.txt` в командах ниже.
 
 Тот же набор прошёл на Linux amd64 в
 [GitHub Actions](https://github.com/ha-homelab/asterisk-telephony/actions/runs/39005310862):

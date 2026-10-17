@@ -23,6 +23,10 @@ jobs:
   home-assistant-runtime:
     runs-on: ubuntu-24.04
     timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        requirements: [requirements-runtime.txt, requirements-runtime-2026.10.0.txt]
     steps:
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
       - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
@@ -31,7 +35,7 @@ jobs:
       - name: Install pinned Home Assistant runtime in an isolated environment
         run: |
           python -m venv .local/runtime-venv
-          .local/runtime-venv/bin/python -m pip install --disable-pip-version-check -r requirements-runtime.txt
+          .local/runtime-venv/bin/python -m pip install --disable-pip-version-check -r "${{ matrix.requirements }}"
       - name: Download and verify pinned integration (staging only)
         run: python scripts/stage_integration.py --stage .local/runtime-upstream
       - name: Exercise real HA schemas and registry with modeled AMI

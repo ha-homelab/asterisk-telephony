@@ -1,0 +1,5 @@
+# Compatibility target for installations still running HA 2026.10.0.
+# Use only in a disposable Python >=3.14.2 virtualenv.
+homeassistant==2026.10.0
+asterisk-ami==0.1.7
+voluptuous==0.15.2
