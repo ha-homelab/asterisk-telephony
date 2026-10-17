@@ -131,6 +131,16 @@ class ScheduleTests(unittest.TestCase):
             with self.assertRaises(ValueError):
                 schedule.validate_settings({"201": invalid})
 
+    def test_alarm_migration_captures_old_line_then_ignores_selector(self):
+        old = {**self.settings, "line": "202", "alarm_enabled": True}
+        old.pop("alarm_line")
+        old.pop("alarm_configured")
+        restored = schedule.validate_settings({"201": old})["201"]
+        self.assertEqual(restored["alarm_line"], "202")
+        self.assertTrue(restored["alarm_configured"])
+        restored["line"] = "201"
+        self.assertEqual(schedule.pending(restored, "201", self.now, self.start)[0][2], "202")
+
 
 class ImageTests(unittest.TestCase):
     def setUp(self):

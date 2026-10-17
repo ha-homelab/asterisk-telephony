@@ -2,6 +2,7 @@
 import voluptuous as vol
 
 from homeassistant.config_entries import ConfigEntryState
+from homeassistant.core import SupportsResponse
 from homeassistant.exceptions import HomeAssistantError
 from homeassistant.helpers import config_validation as cv
 from homeassistant.helpers import entity_registry as er
@@ -11,29 +12,48 @@ from homeassistant.helpers.service import async_register_admin_service
 from .api import GatewayClient
 from .const import DOMAIN, PLATFORMS
 from .coordinator import PhoneCoordinator
+from .scheduling_api import SCHEMA as SCHEDULE_SCHEMA, schedule
 
 CONFIG_SCHEMA = cv.config_entry_only_config_schema(DOMAIN)
 BASE = {vol.Required("entry_id"): str, vol.Required("phone"): str, vol.Optional("title", default="Home Assistant"): vol.All(str, vol.Length(max=48))}
 
 
 async def async_setup(hass, config):
-    async def send(call):
+    def resolve(call):
         entry = hass.config_entries.async_get_entry(call.data["entry_id"])
         if entry is None or entry.domain != DOMAIN or entry.state is not ConfigEntryState.LOADED or not hasattr(entry, "runtime_data"):
             raise HomeAssistantError("Choose a loaded Cisco phone controls config entry")
         coordinator = entry.runtime_data
-        primary = call.data["phone"]
+        primary = call.data.get("phone")
+        if primary is None and call.service == "schedule":
+            owners = [phone["id"] for phone in (coordinator.data or {}).get("phones", [])
+                      if call.data["line"] in phone["lines"]]
+            if len(owners) != 1:
+                raise HomeAssistantError("The line has no unique handset in the saved gateway inventory")
+            primary = owners[0]
         if coordinator.phone(primary) is None:
             raise HomeAssistantError("Choose a primary handset ID from this gateway")
+        return coordinator, primary
+
+    async def send(call):
+        coordinator, primary = resolve(call)
         if call.service == "send_message":
             await coordinator.perform(primary, "message", {"title": call.data["title"], "text": call.data["text"]})
         else:
             await coordinator.send_image(primary, call.data["title"], call.data["path"])
 
+    async def schedule_service(call):
+        coordinator, primary = resolve(call)
+        options = {key: value for key, value in call.data.items()
+                   if key not in ("entry_id", "phone", "line", "operation")}
+        return await schedule(coordinator, primary, call.data["line"], call.data["operation"], **options)
+
     async_register_admin_service(hass, DOMAIN, "send_message", send,
                                 vol.Schema({**BASE, vol.Required("text"): vol.All(str, vol.Length(min=1, max=2000))}))
     async_register_admin_service(hass, DOMAIN, "send_image", send,
                                 vol.Schema({**BASE, vol.Required("path"): vol.All(str, vol.Length(min=1, max=250))}))
+    async_register_admin_service(hass, DOMAIN, "schedule", schedule_service,
+                                SCHEDULE_SCHEMA, supports_response=SupportsResponse.ONLY)
     return True
 
 

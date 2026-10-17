@@ -51,3 +51,56 @@ send_image:
       required: true
       selector:
         text:
+schedule:
+  name: Manage a line's schedule
+  description: Atomic administrator operation with a response. Each handset has one timer and one weekday alarm. Changing a sibling line's slot requires explicit replacement. Never automatically retry an unknown outcome.
+  fields:
+    entry_id:
+      name: Integration
+      required: true
+      selector:
+        config_entry:
+          integration: cisco_phone_control
+    phone:
+      name: Primary handset ID
+      description: Optional; the exact line must have one known handset owner.
+      selector:
+        text:
+    line:
+      name: Exact line
+      required: true
+      selector:
+        text:
+    operation:
+      required: true
+      selector:
+        select:
+          options: [status, timer_start, timer_cancel, alarm_set, alarm_enable, alarm_disable, alert_stop]
+    request_id:
+      name: Stable request ID
+      description: Required for changes. Reusing an ID returns its result without repeating the operation.
+      selector:
+        text:
+    minutes:
+      selector:
+        number:
+          min: 1
+          max: 1440
+          mode: box
+    time:
+      name: Alarm time HH:MM
+      selector:
+        text:
+    weekdays:
+      description: List of integers, Monday 0 through Sunday 6.
+      selector:
+        object:
+    enabled:
+      default: false
+      selector:
+        boolean:
+    replace:
+      description: Explicitly replace a sibling line's timer or alarm slot.
+      default: false
+      selector:
+        boolean:

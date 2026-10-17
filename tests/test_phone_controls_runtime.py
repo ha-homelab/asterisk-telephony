@@ -55,6 +55,96 @@ class PhoneRuntimeTests(unittest.IsolatedAsyncioTestCase):
             await self.c.perform("201", "answer")
         self.client.action.assert_not_awaited()
 
+    async def test_atomic_secondary_timer_replay_and_sibling_ownership(self):
+        from custom_components.cisco_phone_control.scheduling_api import schedule
+        from homeassistant.exceptions import HomeAssistantError
+        result = await schedule(self.c, "201", "202", "timer_start", minutes=5, request_id="timer-request-001")
+        self.assertEqual(result["timer"]["line"], "202")
+        self.assertEqual(self.c.settings["201"]["line"], "201")
+        deadline = result["timer"]["deadline"]
+        from custom_components.cisco_phone_control.schedule import validate_settings
+        self.c.settings = validate_settings(copy.deepcopy(self.c.store.async_save.await_args.args[0]["phones"]))
+        repeated = await schedule(self.c, "201", "202", "timer_start", minutes=5, request_id="timer-request-001")
+        self.assertEqual(repeated["operation_result"], "replayed")
+        self.assertEqual(repeated["timer"]["deadline"], deadline)
+        with self.assertRaises(HomeAssistantError):
+            await schedule(self.c, "201", "202", "timer_start", minutes=5, request_id="same-line-request-002")
+        for operation, options in (("timer_start", {"minutes": 1}), ("timer_cancel", {})):
+            with self.assertRaises(HomeAssistantError):
+                await schedule(self.c, "201", "201", operation, request_id="other-request-001", **options)
+        with self.assertRaises(HomeAssistantError):
+            await schedule(self.c, "201", "202", "timer_start", minutes=7, request_id="timer-request-001")
+        self.client.action.assert_not_awaited()
+
+    async def test_atomic_alarm_has_own_line_and_exact_enable_disable(self):
+        from custom_components.cisco_phone_control.scheduling_api import schedule
+        from homeassistant.exceptions import HomeAssistantError
+        await schedule(self.c, "201", "202", "alarm_set", time="09:45", weekdays=[4, 0], enabled=True, request_id="alarm-request-001")
+        self.assertEqual(self.c.settings["201"]["line"], "201")
+        await self.c.configure("201", "line", "201")
+        result = await schedule(self.c, "201", "202", "status")
+        self.assertEqual(result["alarm"], {"line": "202", "time": "09:45", "weekdays": [0, 4], "enabled": True, "configured": True})
+        with self.assertRaises(HomeAssistantError):
+            await schedule(self.c, "201", "201", "alarm_disable", request_id="alarm-request-002")
+        await schedule(self.c, "201", "202", "alarm_disable", request_id="alarm-request-003")
+        await schedule(self.c, "201", "202", "alarm_enable", request_id="alarm-request-004")
+        self.assertEqual(self.c.settings["201"]["alarm_line"], "202")
+        await self.c.configure("201", "alarm_enabled", False)
+        await self.c.configure("201", "alarm_enabled", True)
+        self.assertEqual(self.c.settings["201"]["alarm_line"], "202")
+        with self.assertRaises(HomeAssistantError):
+            await schedule(self.c, "201", "201", "alarm_set", time="07:30", weekdays=[1], request_id="alarm-request-005")
+        await schedule(self.c, "201", "201", "alarm_set", time="07:30", weekdays=[1], replace=True, request_id="alarm-request-006")
+        self.assertEqual(self.c.settings["201"]["alarm_line"], "201")
+
+    async def test_atomic_stop_refuses_sibling_and_changed_alert(self):
+        from custom_components.cisco_phone_control.scheduling_api import schedule
+        from homeassistant.exceptions import HomeAssistantError
+        self.data["phones"][0]["alert"] = {"id": "a" * 32, "kind": "timer", "line": "202", "state": "ringing", "reason": None}
+        with self.assertRaises(HomeAssistantError):
+            await schedule(self.c, "201", "201", "alert_stop", request_id="stop-request-001")
+        original = copy.deepcopy(self.data)
+        changed = copy.deepcopy(self.data)
+        changed["phones"][0]["alert"]["id"] = "b" * 32
+        self.client.snapshot.side_effect = [original, changed]
+        result = await schedule(self.c, "201", "202", "alert_stop", request_id="stop-request-002")
+        self.assertEqual(result["operation_result"], "outcome_unknown")
+        self.client.action.assert_not_awaited()
+        self.client.snapshot.side_effect = lambda: copy.deepcopy(changed)
+        repeated = await schedule(self.c, "201", "202", "alert_stop", request_id="stop-request-002")
+        self.assertEqual(repeated["operation_result"], "outcome_unknown")
+        self.client.action.assert_not_awaited()
+
+    async def test_atomic_cancel_persists_offline_and_never_rearms(self):
+        from custom_components.cisco_phone_control.scheduling_api import schedule
+        from custom_components.cisco_phone_control.api import GatewayError
+        self.c.settings["201"].update(timer_line="202", timer_deadline=9999999999)
+        self.client.snapshot.side_effect = GatewayError("offline")
+        result = await schedule(self.c, "201", "202", "timer_cancel", request_id="cancel-request-001")
+        self.assertEqual(result["operation_result"], "outcome_unknown")
+        self.assertIsNone(self.c.settings["201"]["timer_deadline"])
+        self.client.action.assert_not_awaited()
+
+    async def test_atomic_schedule_save_failure_rolls_back_without_action(self):
+        from custom_components.cisco_phone_control.scheduling_api import schedule
+        from homeassistant.exceptions import HomeAssistantError
+        old = copy.deepcopy(self.c.settings)
+        self.c.store.async_save.side_effect = OSError("disk full")
+        with self.assertRaises(HomeAssistantError):
+            await schedule(self.c, "201", "202", "timer_start", minutes=1, request_id="failed-request-001")
+        self.assertEqual(old, self.c.settings)
+        self.client.action.assert_not_awaited()
+
+    async def test_atomic_parallel_timer_starts_cannot_replace_sibling(self):
+        from custom_components.cisco_phone_control.scheduling_api import schedule
+        from homeassistant.exceptions import HomeAssistantError
+        results = await asyncio.gather(
+            schedule(self.c, "201", "201", "timer_start", minutes=1, request_id="parallel-request-001"),
+            schedule(self.c, "201", "202", "timer_start", minutes=1, request_id="parallel-request-002"),
+            return_exceptions=True)
+        self.assertEqual(sum(isinstance(result, HomeAssistantError) for result in results), 1)
+        self.assertEqual(self.c.settings["201"]["timer_line"], "201")
+
     async def test_text_privacy_gate_and_volatile_state(self):
         from homeassistant.helpers.recorder import DATA_INSTANCE
         from homeassistant.exceptions import HomeAssistantError
@@ -254,6 +344,28 @@ class PhoneRuntimeTests(unittest.IsolatedAsyncioTestCase):
         self.assertIsNotNone(registry.async_get(unrelated_owned_key))
         owned = [s for s in self.hass.states.async_all() if s.entity_id.startswith(("button.cisco_201", "switch.cisco_201", "select.cisco_201", "text.cisco_201", "time.cisco_201", "number.cisco_201", "sensor.cisco_201"))]
         self.assertEqual(len(owned), 29)
+        # Exercise actual HA service dispatch and response handling, not only the coordinator.
+        response = await self.hass.services.async_call(DOMAIN, "schedule", {
+            "entry_id": self.entry.entry_id, "phone": "201", "line": "202",
+            "operation": "timer_start", "minutes": 5, "request_id": "service-request-001",
+        }, blocking=True, return_response=True)
+        self.assertEqual(response["schema_version"], 1)
+        self.assertEqual(response["timer"]["line"], "202")
+        self.assertEqual(response["operation_result"], "applied")
+        # Exact line resolution also works without a separate gateway query.
+        response = await self.hass.services.async_call(DOMAIN, "schedule", {
+            "entry_id": self.entry.entry_id, "line": "202", "operation": "status",
+        }, blocking=True, return_response=True)
+        self.assertEqual((response["phone"], response["lines"]), ("201", ["201", "202"]))
+        from custom_components.cisco_phone_control.api import GatewayError
+        self.client.snapshot.side_effect = GatewayError("synthetic offline")
+        response = await self.hass.services.async_call(DOMAIN, "schedule", {
+            "entry_id": self.entry.entry_id, "line": "202", "operation": "timer_cancel",
+            "request_id": "offline-request-001",
+        }, blocking=True, return_response=True)
+        self.assertEqual(response["operation_result"], "outcome_unknown")
+        self.assertFalse(response["timer"]["active"])
+        self.assertFalse(response["gateway_fresh"])
         self.assertTrue(await self.hass.config_entries.async_unload(self.entry.entry_id))
 
 

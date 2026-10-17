@@ -69,6 +69,9 @@ class PhoneCoordinator(DataUpdateCoordinator):
 
     async def configure(self, primary, key, value):
         async with self._settings_lock:
+            if key == "alarm_enabled" and value is True and not self.settings[primary]["alarm_configured"]:
+                self.settings[primary]["alarm_line"] = self.settings[primary]["line"]
+                self.settings[primary]["alarm_configured"] = True
             self.settings[primary][key] = value
             await self._save()
         self.async_update_listeners()
@@ -145,6 +148,8 @@ class PhoneCoordinator(DataUpdateCoordinator):
                     alert = phone["alert"]
                     if not alert or alert["state"] == "ended" or values.get("kind_filter") not in (None, alert["kind"]):
                         return {"status": "not_active"}
+                    if values.get("line_filter") not in (None, alert["line"]) or values.get("alert_id_filter") not in (None, alert["id"]):
+                        raise HomeAssistantError("The active alert changed; no other alert was stopped")
                     values = {"alert_id": alert["id"]}
                 elif action == "alert":
                     if "alert" not in phone:

@@ -45,6 +45,9 @@ class PhoneSensor(PhoneEntity, SensorEntity):
 
     @property
     def extra_state_attributes(self):
-        if self.key == "schedule_status" and self.phone and self.phone.get("alert"):
-            return {key: self.phone["alert"].get(key) for key in ("kind", "state", "reason")}
+        if self.key == "schedule_status":
+            attrs = {"alarm_line": self.settings["alarm_line"], "timer_line": self.settings["timer_line"]}
+            if self.phone and self.phone.get("alert"):
+                attrs.update({key: self.phone["alert"].get(key) for key in ("kind", "state", "reason")})
+            return attrs
         return None
