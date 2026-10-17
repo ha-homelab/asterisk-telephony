@@ -81,6 +81,8 @@ class RendererTests(unittest.TestCase):
         self.assertIn("state_attr('sensor.example_201_connected_line', 'Channel')", script[0]['variables']['channel'])
         self.assertIn("channel.startswith('PJSIP/201-')", script[1]['value_template'])
         self.assertIn("['None', 'unknown', 'unavailable', '']", script[1]['value_template'])
+        self.assertIn("state_attr('sensor.example_201_connected_line', 'Channel') == channel", script[1]['value_template'])
+        self.assertIn("states('sensor.example_201_state') == 'In use'", script[1]['value_template'])
         self.assertEqual(script[2]['data']['parameters']['Channel'], '{{ channel }}')
     def test_safe_dtmf_automation_default_disabled(self):
         automation = render.build(config())['asterisk.yaml']['automation'][0]

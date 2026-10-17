@@ -18,17 +18,23 @@ class TemplateTests(unittest.TestCase):
                     self.assertEqual(yaml.safe_load(render.yaml_text(document)), document)
     def test_hangup_only_for_active_own_channel(self):
         seq = render.build(config())['asterisk.yaml']['script']['asterisk_hangup_201']['sequence']
-        for channel, line, desc, expected in [
-            ('PJSIP/201-000000aa', '202', 'Up', True),
-            ('PJSIP/202-000000aa', '202', 'Up', False),
-            ('PJSIP/201-000000aa', 'None', 'Up', False),
-            ('PJSIP/201-000000aa', '202', 'Ringing', False),
-            ('', '202', 'Up', False),
+        for channel, line, device_state, desc, current_channel, expected in [
+            ('PJSIP/201-000000aa', '202', 'In use', 'Up', 'PJSIP/201-000000aa', True),
+            ('PJSIP/201-000000aa', '630', 'In use', 'Ring', 'PJSIP/201-000000aa', True),
+            ('PJSIP/202-000000aa', '202', 'In use', 'Up', 'PJSIP/202-000000aa', False),
+            ('PJSIP/201-000000aa', 'None', 'In use', 'Up', 'PJSIP/201-000000aa', False),
+            ('PJSIP/201-000000aa', '202', 'Ringing', 'Ring', 'PJSIP/201-000000aa', False),
+            ('PJSIP/201-000000aa', '202', 'Not in use', 'Up', 'PJSIP/201-000000aa', False),
+            ('PJSIP/201-000000aa', '202', 'unavailable', 'Up', 'PJSIP/201-000000aa', False),
+            ('PJSIP/201-000000aa', 'unavailable', 'In use', 'Up', 'PJSIP/201-000000aa', False),
+            ('PJSIP/201-000000aa', '202', 'In use', 'Up', 'PJSIP/201-000000bb', False),
+            ('', '202', 'In use', 'Up', '', False),
+            (None, '202', 'In use', 'Up', None, False),
         ]:
-            with self.subTest(channel=channel, line=line, desc=desc):
+            with self.subTest(channel=channel, line=line, device_state=device_state, desc=desc, current_channel=current_channel):
                 env=Environment()
-                env.globals['states']=lambda e: line
-                env.globals['state_attr']=lambda e,k: channel if k=='Channel' else desc
+                env.globals['states']=lambda e: device_state if e == 'sensor.example_201_state' else line
+                env.globals['state_attr']=lambda e,k: current_channel if k=='Channel' else desc
                 self.assertEqual(env.from_string(seq[1]['value_template']).render(channel=channel), str(expected))
     def test_dtmf_guard_rejects_startup_duplicates_other_digits_and_contexts(self):
         condition = render.build(config())['asterisk.yaml']['automation'][0]['conditions'][0]['value_template']

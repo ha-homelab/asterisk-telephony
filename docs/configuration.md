@@ -89,8 +89,11 @@ lovelace:
 
 Alternatively, create a separate dashboard in the UI and paste the file contents
 into the Raw configuration editor. Do not replace the main dashboard wholesale.
-Then run a config check and a controlled restart or reload. These scripts use
-the `asterisk_` prefix; check for duplicate keys in other packages.
+Then run a config check and a controlled restart after active calls finish.
+Recorder creates its exclusion filter at startup, so the new privacy package
+requires a restart. For later script-only changes, `script.reload` includes
+package scripts but does not activate Recorder changes. These scripts use the
+`asterisk_` prefix; check for duplicate keys in other packages.
 
 ## Call control
 
@@ -102,11 +105,19 @@ connects it to 630. Do not use this button until Assist has passed acceptance te
 
 `script.asterisk_hangup_<number>` reads the **current** `Channel` from the chosen
 Connected Line sensor every time. Its guard requires a `PJSIP/<number>-…` channel,
-state `Up`, and a nonempty Connected Line. It does not send an idle, stale, or
-another endpoint's channel. The button is for connected calls, not every ringing
-stage. If upstream reports the opposite party's channel, the guard rejects the
-action: inspect the attributes and select the correct sensor. Never store a
-channel suffix such as `-0000001a` as a permanent setting.
+the mapped Device State sensor to be `In use`, and a nonempty Connected Line.
+It also rechecks that the current Channel still equals the captured value.
+Upstream updates Connected Line on `NewConnectedLine`, `Newchannel`, and `Hangup`,
+not `Newstate`; its `ChannelStateDesc` can remain `Ring` during an answered call.
+Device State instead follows `DeviceStateChange`.
+
+The guard rejects observed idle, unavailable, ringing, changed, or foreign
+channels. It cannot prove freshness if AMI events have been lost; after an AMI
+outage, verify fresh events and the live PBX channel list before using Hangup.
+The button is for connected calls, not every ringing stage. If upstream reports
+the opposite party's channel, the guard rejects the action: inspect the
+attributes and select the correct sensor. Never store a channel suffix such as
+`-0000001a` as a permanent setting.
 
 The dashboard asks for confirmation before calling or hanging up. This prevents
 accidental clicks; it does not restrict the account's AMI permissions.

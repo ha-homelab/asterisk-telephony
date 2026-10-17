@@ -177,6 +177,38 @@ class UpstreamRuntimeTests(unittest.IsolatedAsyncioTestCase):
     async def test_generated_yaml_passes_actual_ha_script_and_automation_schemas(self):
         await self._assert_generated_yaml_schemas('site.example.json')
 
+    async def test_answered_call_hangup_uses_device_state_when_connected_line_stays_ring(self):
+        from homeassistant.helpers.template import Template
+        from test_render import config, render
+
+        await self.integration.async_setup_entry(self.hass, self.entry)
+        await asyncio.sleep(0)
+        await asyncio.sleep(0)
+        client = self.hass.data['asterisk'][self.entry.entry_id]['client']
+        entities = []
+        await self.sensor.async_setup_entry(self.hass, self.entry, lambda added, *a: entities.extend(added))
+        for entity in entities:
+            entity.schedule_update_ha_state = lambda *a, **k: None
+        connected = next(e for e in entities if isinstance(e, self.sensor.ConnectedLineSensor))
+        state = next(e for e in entities if isinstance(e, self.sensor.DeviceStateSensor))
+        channel = 'PJSIP/201-00000005'
+        client.emit('NewConnectedLine', CallerIDNum='201', ConnectedLineNum='630',
+                    CallerIDName='Synthetic phone', ConnectedLineName='Synthetic Assist',
+                    Channel=channel, ChannelState='4', ChannelStateDesc='Ring', Exten='630', Context='home')
+        client.emit('Newstate', CallerIDNum='201', Channel=channel,
+                    ChannelState='6', ChannelStateDesc='Up')
+        client.emit('DeviceStateChange', Device='PJSIP/201', State='INUSE')
+        self.assertEqual(connected.extra_state_attributes['ChannelStateDesc'], 'Ring')
+        self.assertEqual(state.state, 'In use')
+        self.hass.states.async_set('sensor.example_201_connected_line', connected.state, connected.extra_state_attributes)
+        self.hass.states.async_set('sensor.example_201_state', state.state)
+        sequence = render.build(config('site.single-phone.example.json'))['asterisk.yaml']['script']['asterisk_hangup_201']['sequence']
+        guard = Template(sequence[1]['value_template'], self.hass)
+        self.assertTrue(guard.async_render({'channel': channel}))
+        client.emit('DeviceStateChange', Device='PJSIP/201', State='NOT_INUSE')
+        self.hass.states.async_set('sensor.example_201_state', state.state)
+        self.assertFalse(guard.async_render({'channel': channel}))
+
     async def test_single_phone_yaml_passes_actual_ha_script_and_automation_schemas(self):
         await self._assert_generated_yaml_schemas('site.single-phone.example.json')
 

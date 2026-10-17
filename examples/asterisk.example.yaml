@@ -42,7 +42,7 @@
           "channel": "{{ state_attr('sensor.example_201_connected_line', 'Channel') | default('', true) }}"
       -
         "condition": "template"
-        "value_template": "{{ channel is string and channel.startswith('PJSIP/201-') and states('sensor.example_201_connected_line') not in ['None', 'unknown', 'unavailable', ''] and state_attr('sensor.example_201_connected_line', 'ChannelStateDesc') == 'Up' }}"
+        "value_template": "{{ channel is string and channel.startswith('PJSIP/201-') and state_attr('sensor.example_201_connected_line', 'Channel') == channel and states('sensor.example_201_connected_line') not in ['None', 'unknown', 'unavailable', ''] and states('sensor.example_201_state') == 'In use' }}"
       -
         "action": "asterisk.send_action"
         "data":
@@ -58,7 +58,7 @@
           "channel": "{{ state_attr('sensor.example_202_connected_line', 'Channel') | default('', true) }}"
       -
         "condition": "template"
-        "value_template": "{{ channel is string and channel.startswith('PJSIP/202-') and states('sensor.example_202_connected_line') not in ['None', 'unknown', 'unavailable', ''] and state_attr('sensor.example_202_connected_line', 'ChannelStateDesc') == 'Up' }}"
+        "value_template": "{{ channel is string and channel.startswith('PJSIP/202-') and state_attr('sensor.example_202_connected_line', 'Channel') == channel and states('sensor.example_202_connected_line') not in ['None', 'unknown', 'unavailable', ''] and states('sensor.example_202_state') == 'In use' }}"
       -
         "action": "asterisk.send_action"
         "data":
