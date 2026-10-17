@@ -5,7 +5,7 @@ On October 16, 2026, the unchanged upstream TECH7Fox `v1.0.5`, commit
 3.14.7 virtualenv with the actual packages `homeassistant==2026.10.2`,
 `asterisk-ami==0.1.7`, and `voluptuous==0.15.2`. Source files came from the
 archive verified against [upstream.lock.json](../upstream.lock.json).
-All four tests in [test_upstream_runtime.py](../tests/test_upstream_runtime.py) passed.
+The original four tests in [test_upstream_runtime.py](../tests/test_upstream_runtime.py) passed.
 
 On October 17, the same suite passed with `homeassistant==2026.10.0` before
 installation on that HA version. CI checks both versions in separate isolated
@@ -18,6 +18,12 @@ The same suite also passed on Linux amd64 in
 The [Asterisk container checks](https://github.com/4alvit/cisco-home-telephony/actions/runs/39005213169)
 also passed: 20 unit tests, image builds, and an isolated smoke test with real
 AMI, G.711/Opus translation, Assist routing, and TFTP.
+
+The later [run at commit `66320ad`](https://github.com/ha-homelab/asterisk-telephony/actions/runs/39053379153)
+passed 37 generator/template checks and all six runtime tests on both HA
+versions. The added runtime cases cover single-phone YAML and an answered
+call whose Connected Line still reports `Ring`: Hangup uses the current
+Device State and the captured channel instead.
 
 The following API boundaries were verified:
 
@@ -56,7 +62,7 @@ ASTERISK_UPSTREAM_ROOT="$PWD/.local/runtime-upstream" \
 The installer refuses to overwrite an existing staging directory. For a later
 run, reuse the verified directory or select a new path. An ordinary
 `python3 -m unittest discover -s tests -v` without this environment skips the
-four runtime tests and runs the main standard-library test suite.
+six runtime tests and runs the main standard-library test suite.
 
 ## What still needs acceptance testing at home
 
@@ -67,6 +73,18 @@ was added. This is a separate
 not a result of the mock tests described here. Additional current checks for
 the AMI probe and both HA versions passed in
 [CI for commit 7c04416](https://github.com/ha-homelab/asterisk-telephony/actions/runs/39029938171).
+
+The first physical 7945G subsequently converted to SIP, registered as 201 and
+passed the operator-confirmed handset echo test. The single-phone control
+package and Recorder exclusions were installed; a full HA restart preserved
+all 214 existing script/automation entities and the native VoIP settings.
+The operator confirmed Russian Assist replies from a dialed 630 call and an
+HA-initiated call. A separate live test invoked the generated Hangup script
+and confirmed the intended channel ended, HA returned to idle and Asterisk
+had no active channels. The dashboard configuration was read back through the
+API; browser confirmation behavior remains a separate UI check.
+The linked live record distinguishes these checks from the remaining physical
+acceptance work.
 
 After installation, test AMI reconnection, state updates when a phone registers
 or disconnects, incoming and outgoing calls, hold/hangup, and actual DTMF

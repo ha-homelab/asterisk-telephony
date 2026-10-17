@@ -28,9 +28,14 @@ is not redistributed here.
 Repository checks run locally and in GitHub Actions on `ubuntu-24.04`, without
 secrets, calls, or deployment. On October 17, 2026, the Asterisk and VoIP
 integrations were connected to a running HA 2026.10.0 instance; the real AMI
-connection was verified and a telephony status dashboard was created.
+connection was verified and a telephony dashboard was created. One physical
+Cisco 7945G now runs SIP, registers as 201 and has passed a handset echo test.
+The single-phone Assist/Hangup package and three Recorder exclusions are
+installed; the existing 120 automations and 94 scripts survived the restart.
 [Server deployment record](https://github.com/4alvit/cisco-home-telephony/blob/main/docs/server-validation.md).
-Physical phones, call control, and audio still require acceptance testing.
+The operator confirmed Russian spoken Assist replies, and the generated
+HA Originate/Hangup scripts passed live tests. Speakerphone, DTMF and calls
+between two phones still need their own acceptance results.
 [Acceptance checklist](docs/acceptance.md).
 [Completed test results](docs/runtime-verification.md) link to successful
 Actions runs in both repositories.
