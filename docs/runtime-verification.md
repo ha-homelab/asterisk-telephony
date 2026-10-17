@@ -33,6 +33,12 @@ receives Hangup, while idle, ringing, missing, foreign, and unavailable cases
 send no action. This uses the pinned upstream sensor classes and modeled AMI;
 it does not itself prove a successful live call or delivery after an AMI outage.
 
+The optional per-phone Assist-origin test also runs generated scripts through
+HA's actual script engine and the pinned integration. It verifies separate
+Originate actions for 201, 203 and 205, each ringing its selected endpoint and
+then connecting to 630. The existing 201 script keeps its original ID. These
+are synthetic AMI actions; successful real calls still require phone acceptance.
+
 The following API boundaries were verified:
 
 - The upstream configuration form serializes with current HA/Probatio and
@@ -70,7 +76,7 @@ ASTERISK_UPSTREAM_ROOT="$PWD/.local/runtime-upstream" \
 The installer refuses to overwrite an existing staging directory. For a later
 run, reuse the verified directory or select a new path. An ordinary
 `python3 -m unittest discover -s tests -v` without this environment skips the
-seven runtime tests and runs the main standard-library test suite.
+eight runtime tests and runs the main standard-library test suite.
 
 ## What still needs acceptance testing at home
 

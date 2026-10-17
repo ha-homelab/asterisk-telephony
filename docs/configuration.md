@@ -135,6 +135,21 @@ Timeout, Async}`. The PBX setting `allow_originate:true` is required.
 Similarly, `script.asterisk_call_assist` rings the selected phone first, then
 connects it to 630. Do not use this button until Assist has passed acceptance tests.
 
+To add a separate Assist button for another mapped endpoint, set the optional
+boolean `"assist_origin": true` in that endpoint's `phones` object alongside
+`extension`, `name`, and its five actual entity IDs. For example, enable it for
+primary lines 203 and 205. This adds `script.asterisk_call_assist_203` and
+`script.asterisk_call_assist_205`, each with a confirmation button that rings its
+own endpoint before connecting to `assist_extension`. The original `call_from`
+keeps `script.asterisk_call_assist`; enabling the option there creates no duplicate.
+Omitting the option or setting it to `false` preserves existing output.
+
+These controls do not create or configure native VoIP identities. Discover each
+intended Assist origin through a real call, then verify its Allow calls and
+pipeline settings. Adding only these scripts/buttons leaves Recorder unchanged:
+review and replace the owned script package, use `script.reload`, and merge the
+new buttons into the existing dashboard. No HA restart is needed for that change.
+
 `script.asterisk_hangup_<number>` reads the **current** `Channel` from the chosen
 Connected Line sensor every time. Its guard requires a `PJSIP/<number>-…` channel,
 the mapped Device State sensor to be `In use`, and a Connected Line state other

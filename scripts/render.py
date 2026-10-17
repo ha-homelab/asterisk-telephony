@@ -27,7 +27,9 @@ def validate(config):
     require(isinstance(phones, list) and 1 <= len(phones) <= 50, 'Provide 1–50 phones; use call_to: null to omit pair calling')
     extensions, entities = set(), set()
     for phone in phones:
-        require(isinstance(phone, dict) and set(phone) == {'extension', 'name', 'entities'}, 'Invalid phone keys')
+        require(isinstance(phone, dict) and {'extension', 'name', 'entities'} <= set(phone)
+                <= {'extension', 'name', 'entities', 'assist_origin'}, 'Invalid phone keys')
+        require(type(phone.get('assist_origin', False)) is bool, 'assist_origin must be a boolean')
         ext = phone['extension']
         require(isinstance(ext, str) and re.fullmatch(r'[2-9][0-9]{2,5}', ext) and ext not in extensions, 'Invalid or duplicate phone extension')
         extensions.add(ext)
@@ -62,6 +64,10 @@ def build(config):
     if dst is not None:
         scripts['asterisk_call_pair'] = {'alias': f'Asterisk: call {src}, then {dst}', 'mode': 'single', 'sequence': [originate(config, src, dst)]}
     scripts['asterisk_call_assist'] = {'alias': f'Asterisk: call {src}, then Assist {config["assist_extension"]}', 'mode': 'single', 'sequence': [originate(config, src, config['assist_extension'])]}
+    extra_assist_origins = [ext for ext, phone in phones.items() if ext != src and phone.get('assist_origin', False)]
+    for ext in extra_assist_origins:
+        scripts[f'asterisk_call_assist_{ext}'] = {'alias': f'Asterisk: call {ext}, then Assist {config["assist_extension"]}',
+            'mode': 'single', 'sequence': [originate(config, ext, config['assist_extension'])]}
     rows = []
     private_entities = []
     for ext, phone in phones.items():
@@ -97,6 +103,7 @@ def build(config):
     if dst is not None:
         call_buttons.append(('asterisk_call_pair', f'Call {src}, then {dst}'))
     call_buttons.append(('asterisk_call_assist', f'Call {src}, then Assist'))
+    call_buttons.extend((f'asterisk_call_assist_{ext}', f'Call {ext}, then Assist') for ext in extra_assist_origins)
     for service, title in call_buttons:
         buttons.append({'type': 'button', 'name': title, 'icon': 'mdi:phone', 'tap_action': {
             'action': 'perform-action', 'perform_action': 'script.' + service, 'confirmation': {'text': title + '? This rings a phone.'}}})

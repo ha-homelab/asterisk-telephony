@@ -18,6 +18,46 @@ def config(example='site.example.json'):
     return value
 
 class RendererTests(unittest.TestCase):
+    def test_optional_assist_origins_preserve_default_output(self):
+        value = config()
+        original = render.build(value)
+        for phone in value['phones']:
+            phone['assist_origin'] = False
+        self.assertEqual(render.build(value), original)
+        value['phones'][0]['assist_origin'] = True
+        self.assertEqual(render.build(value), original)  # Existing call_from keeps its stable ID.
+
+    def test_assist_origin_adds_only_its_own_confirmed_call_control(self):
+        value = config(); value['call_to'] = None
+        original = render.build(value)
+        value['phones'][1]['assist_origin'] = True
+        output = render.build(value)
+        scripts = output['asterisk.yaml']['script']
+        for key, script in original['asterisk.yaml']['script'].items():
+            self.assertEqual(scripts[key], script)
+        self.assertEqual(set(scripts) - set(original['asterisk.yaml']['script']), {'asterisk_call_assist_202'})
+        self.assertEqual(scripts['asterisk_call_assist_202']['sequence'][0]['data'], {
+            'action': 'Originate', 'parameters': {'Channel': 'PJSIP/202', 'Context': 'home', 'Exten': '630',
+                'Priority': '1', 'CallerID': 'Home Assistant <202>', 'Timeout': '20000', 'Async': 'true'}})
+        self.assertEqual(output['asterisk_privacy.yaml'], original['asterisk_privacy.yaml'])
+        self.assertEqual(output['asterisk.yaml']['automation'], original['asterisk.yaml']['automation'])
+        buttons = output['asterisk_dashboard.yaml']['views'][0]['cards'][-1]['cards']
+        added = next(button for button in buttons if button['tap_action']['perform_action'] == 'script.asterisk_call_assist_202')
+        self.assertEqual(added['name'], 'Call 202, then Assist')
+        self.assertTrue(added['tap_action']['confirmation']['text'])
+
+    def test_assist_origin_requires_boolean_and_real_mapping(self):
+        for bad in ('true', 1, 0, None, [], {}):
+            with self.subTest(value=bad):
+                value = config(); value['phones'][1]['assist_origin'] = bad
+                with self.assertRaises(ValueError): render.build(value)
+        value = config(); value['phones'][1]['assist_origin'] = True
+        del value['phones'][1]['entities']['state']
+        with self.assertRaises(ValueError): render.build(value)
+        value = config(); value['phones'][1]['assist_origin'] = True
+        value['phones'][1]['unexpected_option'] = True
+        with self.assertRaises(ValueError): render.build(value)
+
     def test_single_phone_keeps_assist_hangup_privacy_and_disabled_dtmf(self):
         output = render.build(config('site.single-phone.example.json'))
         package = output['asterisk.yaml']

@@ -6,6 +6,7 @@ ASTERISK_UPSTREAM_ROOT=/absolute/path/to/stage. The ordinary stdlib suite skips
 these tests. AMI is a deterministic in-process fake; no PBX/HA network is used.
 """
 import asyncio
+import copy
 import importlib.util
 import json
 import os
@@ -211,6 +212,35 @@ class UpstreamRuntimeTests(unittest.IsolatedAsyncioTestCase):
 
     async def test_single_phone_yaml_passes_actual_ha_script_and_automation_schemas(self):
         await self._assert_generated_yaml_schemas('site.single-phone.example.json')
+
+    async def test_per_phone_assist_origins_execute_for_the_selected_endpoint(self):
+        from homeassistant.core import Context
+        from homeassistant.components.script.config import async_validate_config_item
+        from homeassistant.helpers.script import Script
+        from test_render import config, render
+
+        await self.integration.async_setup_entry(self.hass, self.entry)
+        await asyncio.sleep(0)
+        await asyncio.sleep(0)
+        client = self.hass.data['asterisk'][self.entry.entry_id]['client']
+        value = config('site.single-phone.example.json')
+        for extension in ('203', '205'):
+            phone = copy.deepcopy(value['phones'][0])
+            phone.update(extension=extension, name='Synthetic ' + extension, assist_origin=True)
+            phone['entities'] = {key: entity.replace('201', extension) for key, entity in phone['entities'].items()}
+            value['phones'].append(phone)
+        generated = render.build(value)['asterisk.yaml']['script']
+        for extension, name in (('201', 'asterisk_call_assist'), ('203', 'asterisk_call_assist_203'),
+                                ('205', 'asterisk_call_assist_205')):
+            with self.subTest(extension=extension):
+                checked = await async_validate_config_item(self.hass, name, generated[name])
+                before = len(client.actions)
+                await Script(self.hass, checked['sequence'], name, 'script').async_run(context=Context())
+                self.assertEqual(len(client.actions), before + 1)
+                self.assertEqual(client.actions[-1].name, 'Originate')
+                self.assertEqual(client.actions[-1].keys, {
+                    'Channel': 'PJSIP/' + extension, 'Context': 'home', 'Exten': '630', 'Priority': '1',
+                    'CallerID': 'Home Assistant <' + extension + '>', 'Timeout': '20000', 'Async': 'true'})
 
     async def test_echo_none_connected_line_hangup_runs_only_for_active_own_channel(self):
         from homeassistant.core import Context
