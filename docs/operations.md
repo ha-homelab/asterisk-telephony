@@ -19,6 +19,8 @@ entity mapping. Устанавливайте изменение сначала �
 после SNAT, точный `/32` в ACL, отдельный AMI secret и Asterisk logs. Для сетевого
 теста достаточно проверки TCP без передачи пароля. Не выводите secret через
 командную строку, историю shell, `kubectl describe` или общий log.
+Для проверки входа, версии, PJSIP discovery и запрета CLI из контейнера HA
+используйте [AMI-пробник с передачей пароля через stdin](ami-verification.md).
 
 **HA подключился, сущностей нет.** Проверьте `PJSIPShowEndpoints` и права discovery,
 наличие PJSIP endpoint до загрузки integration. Эта версия перечисляет устройства
