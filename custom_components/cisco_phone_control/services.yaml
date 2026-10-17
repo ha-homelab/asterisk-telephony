@@ -1,0 +1,53 @@
+send_message:
+  name: Send phone message
+  description: Send private text without storing it in a text entity. Administrator only. Automation traces may still contain action inputs.
+  fields:
+    entry_id:
+      name: Integration
+      required: true
+      selector:
+        config_entry:
+          integration: cisco_phone_control
+    phone:
+      name: Primary handset ID
+      required: true
+      example: "201"
+      selector:
+        text:
+    title:
+      name: Title
+      default: Home Assistant
+      selector:
+        text:
+    text:
+      name: Message
+      required: true
+      selector:
+        text:
+          multiline: true
+send_image:
+  name: Send phone image
+  description: Send a PNG/JPEG up to 2 MiB from config/phone-images or media/phone-images. Administrator only. No URLs or symlinks.
+  fields:
+    entry_id:
+      name: Integration
+      required: true
+      selector:
+        config_entry:
+          integration: cisco_phone_control
+    phone:
+      name: Primary handset ID
+      required: true
+      example: "201"
+      selector:
+        text:
+    title:
+      name: Title
+      default: Home Assistant
+      selector:
+        text:
+    path:
+      name: Approved image path
+      required: true
+      selector:
+        text:

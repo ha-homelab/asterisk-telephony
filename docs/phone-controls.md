@@ -1,0 +1,88 @@
+# Cisco phone controls, timers and alarms
+
+`cisco_phone_control` is an optional Home Assistant custom integration for the authenticated [Cisco phone gateway](https://github.com/4alvit/cisco-home-telephony). It adds controls to each **physical handset**, discovered from the gateway. Two SIP lines on one phone are one device with a line selector. The existing pinned Asterisk integration, its entities and Hangup scripts, and the native VoIP/Assist pipelines remain separate.
+
+![Phone control and scheduling architecture](diagrams/phone-controls.svg)
+
+## Install and connect
+
+1. Deploy the gateway using its reviewed private configuration. Restrict its API to the actual Home Assistant source address, with a dedicated bearer token; retain the phone callback source restrictions. Do not expose the API to the Internet. Use HTTPS if the private path is not trusted: HTTP does not encrypt the token.
+2. Add `ha-homelab/asterisk-telephony` to HACS as an **Integration**, or copy only `custom_components/cisco_phone_control` into the same relative path inside the HA configuration directory. Do not overwrite `custom_components/asterisk`.
+3. Restart Home Assistant once to discover the new integration. In **Settings → Devices & services → Add integration**, choose **Cisco phone controls**. Enter the gateway origin (for example, `http://192.0.2.10:18084`) and its private token. The gateway must return fresh AMI state before setup succeeds. Update a token using the entry's **Reconfigure** menu.
+4. Discover the actual new entity IDs from the registry. Before entering private messages, add the three text entities per handset to Recorder exclusions and restart HA to apply them. Each text input refuses writes until the running Recorder filter excludes its actual ID. Existing exclusions must be preserved. Excluding the **Timer remaining** sensors is also useful to avoid recording every countdown second.
+5. Place only approved images in `/config/phone-images` or `/media/phone-images`; create these directories privately. These paths are deliberately outside `/config/www`. The image action rejects URLs, parent traversal, symlinks, nonregular files and files over 2 MiB. The gateway validates/decodes PNG or JPEG and fits the Cisco service image area, 298 × 156 pixels.
+
+The example address is documentation-only. Do not copy private credentials, configuration entries, `.storage` files, or raw validation logs to Git. A full HA `check_config` log can include secrets from unrelated integrations: redirect it to a private file and report only its exit code and sanitized diagnostics.
+
+## Render readable dashboard tabs
+
+Export the authenticated HA WebSocket `config/entity_registry/list` result to a private JSON file. Use the actual `cisco_phone_control` config entry ID. Optionally export the current admin-only dashboard with `lovelace/config` so all its existing views are preserved:
+
+```sh
+python scripts/render_control_dashboard.py \
+  --registry .local/entity-registry.json \
+  --entry-id REPLACE_WITH_ACTUAL_ENTRY_ID \
+  --baseline-dashboard .local/dashboard-before.json \
+  --output .local/controls-review
+```
+
+The command does not contact HA. It generates one tab per discovered handset, separate Call, Message, Alarm and Timer cards, an actual entity map, and a small Recorder package containing only the new text/countdown exclusions. It rejects missing or disabled entities, duplicate identities and an existing target tab. Review the output before applying it; re-read the live dashboard immediately before saving and refuse if it changed since export. Keep the dashboard admin-only. Copy the Recorder additions into a new owned package without replacing any existing exclusions, validate privately, then restart HA to activate its filter.
+
+## Everyday controls
+
+Each device exposes a **Line** selector and a **Dial destination** selector containing only the gateway's configured allowlist. Choose both, then press **Dial**. Destinations include other extensions, Assist, test numbers and enabled radio stations. The phone gateway selects the physical line key before dialing; the Cisco `Dial:` URI's optional suffix is not a line index.
+
+**Answer** and **Hang up** fetch fresh AMI state and require one active handset channel on the selected line. Answer accepts only `Ringing`; Asterisk's `Ring` means the phone itself started an outgoing call. A second concurrent call or a changed channel identity is a refusal, not a reason to guess. The gateway independently verifies the exact channel and unique ID immediately before the action.
+
+**Speaker / dial tone toggle** is an explicit idle-only toggle. Neither HA nor the gateway knows the physical speaker or hook state, so there is no misleading speaker-on switch. Pressing it may open or close idle dial tone. Answering a ringing line normally uses speakerphone when the handset is on its cradle.
+
+**PBX do not disturb** controls the gateway's persistent PBX DND setting, not the Cisco screen's native DND softkey. Its `pending` attribute means the desired value has not yet been reconciled with Asterisk. Gateway-originated calls obey DND. Idle screen messages and images remain available. Existing direct AMI Originate scripts do not automatically gain this check.
+
+**Gateway auto-answer** is an explicit opt-in, off by default. The gateway answers a freshly observed, isolated incoming `Ringing` channel at most once for that call. It is not native Cisco provisioning or a generic SIP `Alert-Info` trick. Consider who can call the handset before enabling it.
+
+## Messages and images
+
+Enter **Message title** and **Message text**, then press **Send message**. Enter a relative image filename such as `arrival.png`, or an absolute file path inside an approved folder, then press **Send image**. Relative filenames resolve inside `/config/phone-images`. Text input values are kept only in memory and reset when the integration reloads; they are not saved in the schedule store. The text input is limited to 250 characters by the HA entity state limit; the direct action allows up to 2,000 characters.
+
+The administrator-only actions `cisco_phone_control.send_message` and `cisco_phone_control.send_image` accept `entry_id`, the discovered primary handset ID in `phone`, and `title`, plus `text` or `path`. They avoid putting payloads into text entity states. HA automation traces and service events may still include the action inputs; keep sensitive content out of public logs and traces.
+
+An example automation action, after substituting the actual entry ID and primary handset ID:
+
+```yaml
+action: cisco_phone_control.send_message
+data:
+  entry_id: REPLACE_WITH_ACTUAL_ENTRY_ID
+  phone: "201"
+  title: Home Assistant
+  text: The front door is open.
+```
+
+The gateway pushes a phone-fetched HTTP content URL. Cisco HTTP priority 2 defers display to idle; it does **not** make internal `Key:` or `Dial:` operations idle-only. The gateway therefore also checks actual call state. Resource URLs expire after 120 seconds; an already displayed page may remain visible until the phone's **Exit** softkey is pressed.
+
+## Recurring alarms and countdown timers
+
+For an alarm, choose **Line**, **Alarm sound**, **Alarm time**, the desired **Alarm Monday** through **Alarm Sunday** switches, and turn on **Alarm enabled**. Time follows HA's configured local timezone. Defaults are disabled, 07:00, Monday–Friday, and alarm tone 640. The autumn repeated clock hour runs once; a nonexistent spring clock time is skipped. Changing HA's timezone changes the alarm's wall-clock meaning.
+
+For a timer, choose **Line**, **Timer sound**, and **Timer minutes** (1–1,440), then **Start timer**. Starting again replaces the pending timer. The selected line and deadline are captured at start; changing the Line selector later does not redirect that timer. **Cancel timer** cancels a pending countdown, not a call that has already begun. Use **Hang up** to end a current call. **Timer remaining** and **Schedule status** show progress.
+
+A due event requests one gateway `ring` action: the handset rings for up to 20 seconds, then the selected route plays after it is answered (or gateway auto-answer is explicitly enabled). Route 640 plays the configured finite local tone, up to 30 seconds. A radio destination uses the PBX's configured stream/time limits; it is not an endless scheduler retry.
+
+Schedules and pending future timers persist in HA storage. Each occurrence is saved as claimed **before** sending the request, with a stable idempotency key. If HA was offline at the due time, the missed event is not replayed on startup. A running HA that is more than 20 seconds late also skips the event. Busy handsets, DND, unavailable gateways and ambiguous outcomes are reported in Schedule status and are not automatically retried. This avoids duplicate or surprising calls; it is not a guaranteed wake-up service.
+
+## Deployment and rollback checks
+
+Before changing an existing installation, capture private hashes of owned files, the actual entity registry, automation enabled states and any currently running scripts, Recorder exclusions, dashboard JSON, native VoIP identities and selected pipelines. Refuse an overwrite if the current files or dashboard differ from that baseline. Stage only this custom component; preserve every unrelated package and card.
+
+After setup, check actual gateway-to-device mapping, fresh registered contacts at Asterisk, existing entities, new text privacy exclusions, schedule defaults, disabled auto-answer, and the unchanged native Assist voice selections. Add dashboard cards using **actual registered entity IDs**, not guessed names. Validate configuration privately before a controlled restart and confirm there are no active calls. Changes confined to the existing YAML script package need `script.reload`; new custom component code and Recorder exclusions require a restart.
+
+For rollback, disable pending alarms/timers first, unload/remove only this integration entry, restore only its reviewed file/card/privacy changes, and restart if component files or Recorder changed. Keep the independent Asterisk/VoIP integrations and their existing control scripts. Removing this integration does not automatically reset gateway DND or auto-answer preferences; turn them off explicitly if that is part of the rollback.
+
+## Validation
+
+`python -m unittest discover -s tests -p 'test_phone_controls.py' -v` covers ownership, stale evidence, image path security, persistent claims, missed events and DST behavior without HA or network access. The optional pinned HA runtime additionally exercises entity platforms, config flow, actual component setup/unload, text privacy, unknown API outcomes and storage-failure suppression:
+
+```sh
+.local/runtime-venv/bin/python -m unittest discover -s tests -p 'test_phone_controls_runtime.py' -v
+```
+
+These are synthetic tests, not a claim that any live handset answered an alarm. The implementation uses Home Assistant's [coordinator pattern](https://developers.home-assistant.io/docs/integration_fetching_data/) and [config-entry flow](https://developers.home-assistant.io/docs/config_entries_config_flow_handler/). Record live acceptance separately from code validation.

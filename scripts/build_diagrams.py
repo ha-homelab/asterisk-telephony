@@ -38,7 +38,14 @@ def scenes():
     privacy+=arrow(360,232,485,232)+arrow(795,232,920,232)
     privacy+=box('PBX firewall\nallow only HA source /32\nno public AMI',150,435,w=410,color=GOLD)+box('Recorder exclusions\ncall / DTMF entities\nno history by default',710,435,w=410,color=TEAL)
     privacy+=t('An AMI account with write=system is privileged. Network limits and trusted HA users are required.',50,695,21,MUTED)
-    return {'architecture.svg':wrap('Asterisk and Home Assistant', 'Two independent paths for AMI monitoring and SIP audio to Assist.',topology), 'installation.svg':wrap('Installation and verification', 'Verify upstream software, stage locally, install explicitly, map real entities, then test.',rollout), 'privacy.svg':wrap('Data and trust boundaries', 'Public source is separate from household state and AMI secrets.',privacy)}
+    controls=box('Home Assistant UI\ncontrols + schedules',50,180,w=330,h=150)+box('Private phone gateway\nsource + bearer checks',475,180,w=330,h=150,color=GOLD)+box('Cisco 7945G handset\nprimary + secondary line',900,180,w=330,h=150,color=CORAL)
+    controls+=arrow(380,255,475,255)+t('HTTP API',428,230,17,TEAL,'middle')
+    controls+=arrow(805,255,900,255,CORAL)+t('Cisco XML',852,230,17,CORAL,'middle')
+    controls+=box('HA schedule storage\nclaim before sending\nnever replay missed alarms',50,445,w=330,h=150)+box('Asterisk AMI state\nexact channel ownership\nPBX DND + bounded calls',475,445,w=330,h=150,color=GOLD)+box('Private image folders\nlocal PNG / JPEG only\nno URL fetch or symlinks',900,445,w=330,h=150,color=CORAL)
+    controls+=arrow(215,330,215,445)+arrow(640,330,640,445,GOLD,both=True)
+    controls+=t('Existing SIP audio, Asterisk entities and native Assist pipelines remain independent.',50,670,22,MUTED)
+    controls+=t('Message inputs require actual Recorder exclusions. Secrets and household state stay private.',50,710,21,MUTED)
+    return {'architecture.svg':wrap('Asterisk and Home Assistant', 'Two independent paths for AMI monitoring and SIP audio to Assist.',topology), 'installation.svg':wrap('Installation and verification', 'Verify upstream software, stage locally, install explicitly, map real entities, then test.',rollout), 'privacy.svg':wrap('Data and trust boundaries', 'Public source is separate from household state and AMI secrets.',privacy), 'phone-controls.svg':wrap('Phone controls, timers and alarms', 'The Home Assistant client uses a private gateway for state-guarded phone actions, with persistent at-most-once schedules.',controls)}
 
 def main():
     p=argparse.ArgumentParser();p.add_argument('--check',action='store_true');args=p.parse_args()

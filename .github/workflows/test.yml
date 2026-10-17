@@ -17,7 +17,7 @@ jobs:
       - name: Unit tests (no secrets, no live services, no deployment)
         run: .venv/bin/python -m unittest discover -s tests -v
       - name: Python syntax
-        run: python3 -m compileall -q scripts tests
+        run: python3 -m compileall -q scripts tests custom_components
       - name: Diagram XML
         run: python3 scripts/build_diagrams.py --check
   home-assistant-runtime:
@@ -44,3 +44,4 @@ jobs:
         run: |
           .local/runtime-venv/bin/python -c "import sys; sys.path.insert(0, 'tests'); from test_upstream_runtime import RUNTIME_READY; assert RUNTIME_READY, 'Runtime suite must not skip in this job'"
           .local/runtime-venv/bin/python -m unittest discover -s tests -p test_upstream_runtime.py -v
+          .local/runtime-venv/bin/python -m unittest discover -s tests -p test_phone_controls_runtime.py -v

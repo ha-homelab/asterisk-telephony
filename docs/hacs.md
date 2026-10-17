@@ -1,8 +1,17 @@
 # Installation through HACS
 
-HACS and the pinned installer are alternative ways to install the same
-component. Choose one. This companion repository **is not a HACS integration**
-and must not be added to HACS as an Integration.
+This project now contains the optional **Cisco Phone Control** integration.
+Add `https://github.com/ha-homelab/asterisk-telephony` to HACS as an
+**Integration** to install it, then follow the [gateway, configuration and
+privacy steps](phone-controls.md). It provides handset controls, timers,
+weekday alarms and screen notifications.
+
+The independent **Asterisk** integration still comes from TECH7Fox. HACS and
+the pinned installer are alternative ways to install that same upstream
+component; choose one. Installing Cisco Phone Control does not install or
+replace Asterisk or native VoIP/Assist.
+
+## Install the upstream Asterisk integration
 
 1. Install and configure HACS using its [official instructions](https://www.hacs.xyz/docs/use/).
 2. In HACS, open the three-dot menu → Custom repositories.
