@@ -41,6 +41,26 @@ Keep staging, backups and quarantined component copies **outside**
 manifest domain can interfere with the installed integration. Keep only the
 intended installed component directories there.
 
+Before installation or startup, prepare an offline copy of the planned full
+`custom_components` directory, retaining all visible and hidden children and
+placing the candidate at its intended path. Check that layout from this repository:
+
+```sh
+python3 scripts/validate_component_layout.py \
+  --custom-components .local/ha-layout/custom_components \
+  --domain asterisk --version 1.0.5 \
+  --expected-path .local/ha-layout/custom_components/asterisk
+```
+
+The validator parses manifests and detects visible or hidden duplicate domains.
+It does not import components or write files. It does not replace HA's
+configuration check or runtime verification.
+
+The installer also validates the staged domain, version and path automatically.
+Before installing, it scans an existing `custom_components` directory and refuses
+duplicate domains or an Asterisk manifest under another name. Keep the manual
+full-copy check for upgrades and component copies installed by other methods.
+
 ## Installing into a locally accessible /config
 
 1. Back up HA, including `.storage`, and preserve the current

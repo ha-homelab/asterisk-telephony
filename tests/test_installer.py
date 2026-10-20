@@ -3,8 +3,11 @@ import importlib.util
 import io
 import json
 from pathlib import Path
+import subprocess
+import sys
 import tempfile
 import unittest
+from unittest import mock
 import zipfile
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -75,5 +78,63 @@ class InstallerTests(unittest.TestCase):
     def test_missing_config_fails(self):
         with tempfile.TemporaryDirectory() as tmp:
             with self.assertRaises(ValueError): installer.install(Path(tmp).resolve()/'stage', tmp, True)
+    def test_hidden_existing_domain_refuses_install_before_writes(self):
+        data, lock = archive()
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp).resolve(); config = root/'config'; config.mkdir()
+            (config/'configuration.yaml').write_text('{}')
+            backup = config/'custom_components'/'.asterisk-backup'; backup.mkdir(parents=True)
+            (backup/'manifest.json').write_text(json.dumps({'domain':'asterisk','version':'1.0.4'}))
+            staged = installer.stage(installer.verified_files(data, lock), root/'stage')
+            before = {str(p.relative_to(config)):p.read_bytes() for p in config.rglob('*') if p.is_file()}
+            with self.assertRaisesRegex(ValueError, 'manifest already exists'):
+                installer.install(staged, config, apply=True)
+            after = {str(p.relative_to(config)):p.read_bytes() for p in config.rglob('*') if p.is_file()}
+            self.assertEqual(before, after)
+            self.assertFalse((config/'custom_components'/'asterisk').exists())
+    def test_unrelated_duplicate_domain_refuses_install(self):
+        data, lock = archive()
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp).resolve(); config = root/'config'; config.mkdir()
+            (config/'configuration.yaml').write_text('{}')
+            for name in ('other', '.other-backup'):
+                component = config/'custom_components'/name; component.mkdir(parents=True)
+                (component/'manifest.json').write_text(json.dumps({'domain':'other','version':'1'}))
+            staged = installer.stage(installer.verified_files(data, lock), root/'stage')
+            with self.assertRaisesRegex(ValueError, '[Dd]uplicate'):
+                installer.install(staged, config, apply=True)
+            self.assertFalse((config/'custom_components'/'asterisk').exists())
+    def test_complete_temporary_copies_stay_outside_discovery(self):
+        data, lock = archive()
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp).resolve(); config = root/'config'; config.mkdir()
+            (config/'configuration.yaml').write_text('{}')
+            original_rename = Path.rename
+            observations = []
+            def checked_rename(source, target):
+                if (source/'manifest.json').is_file():
+                    observations.append(source.parent)
+                    self.assertNotEqual(source.parent, target.parent)
+                    self.assertEqual(installer.component_layout.scan_manifests(target.parent), {})
+                return original_rename(source, target)
+            with mock.patch.object(Path, 'rename', checked_rename):
+                staged = installer.stage(installer.verified_files(data, lock), root/'stage')
+                self.assertTrue(installer.install(staged, config, apply=True))
+            self.assertEqual(observations, [root/'stage', config])
+    def test_offline_cli_installs_from_another_working_directory(self):
+        data, lock = archive()
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp).resolve(); config = root/'config'; config.mkdir()
+            (config/'configuration.yaml').write_text('{}')
+            (root/'fixture.zip').write_bytes(data)
+            (root/'lock.json').write_text(json.dumps(lock))
+            result = subprocess.run([
+                sys.executable, '-B', str(ROOT/'scripts/stage_integration.py'),
+                '--archive', str(root/'fixture.zip'), '--lock', str(root/'lock.json'),
+                '--stage', str(root/'stage'), '--install-to', str(config), '--apply',
+            ], cwd=root, capture_output=True, text=True)
+            self.assertEqual(result.returncode, 0, result.stderr)
+            manifest = json.loads((config/'custom_components/asterisk/manifest.json').read_bytes())
+            self.assertEqual(manifest, {'domain':'asterisk','version':'1.0.5'})
 
 if __name__ == '__main__': unittest.main()

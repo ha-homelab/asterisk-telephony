@@ -186,6 +186,20 @@ Keep staging and backup copies outside `/config/custom_components`, for example
 under `/config/.cisco-component-backups/<unique>/`. HA also scans dot directories;
 a hidden copy with the same manifest domain can interfere with component loading.
 
+Before installation or startup, check an offline copy of the planned full
+`custom_components` directory, including all hidden children and the candidate:
+
+```sh
+python3 scripts/validate_component_layout.py \
+  --custom-components .local/ha-layout/custom_components \
+  --domain cisco_phone_control --version 0.5.0 \
+  --expected-path .local/ha-layout/custom_components/cisco_phone_control
+```
+
+The validator only parses manifests: it imports no components, writes no files
+and detects hidden as well as visible duplicate domains. Keep the HA configuration
+check and runtime checks below; the layout check does not replace them.
+
 After setup, check actual gateway-to-device mapping, fresh registered contacts at Asterisk, existing entities, new text privacy exclusions, schedule defaults, disabled auto-answer, and the unchanged native Assist voice selections. Add dashboard cards using **actual registered entity IDs**, not guessed names. Validate configuration privately before a controlled restart and confirm there are no active calls. Changes confined to the existing YAML script package need `script.reload`; new custom component code and Recorder exclusions require a restart.
 
 A gateway `accepted` response confirms command acknowledgement, not a completed phone call. During acceptance, check the actual dialed extension, application, channel and unique ID. An Assist call also creates a media leg toward HA: associate it with the handset using the exact linked call ID rather than accepting every channel named `ha-assist`. Leave unrelated user calls untouched. An unplugged handset should remain configured; its offline state must not prevent testing another registered, idle handset.

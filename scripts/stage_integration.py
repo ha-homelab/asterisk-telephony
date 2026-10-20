@@ -2,6 +2,7 @@
 """Verify a pinned upstream ZIP, stage it, and install only with explicit --apply."""
 import argparse
 import hashlib
+import importlib.util
 import io
 import json
 import os
@@ -14,6 +15,10 @@ import urllib.parse
 import zipfile
 
 ROOT = Path(__file__).resolve().parents[1]
+_layout_spec = importlib.util.spec_from_file_location(
+    'component_layout', Path(__file__).with_name('validate_component_layout.py'))
+component_layout = importlib.util.module_from_spec(_layout_spec)
+_layout_spec.loader.exec_module(component_layout)
 MAX_ARCHIVE = 5 * 1024 * 1024
 MAX_EXPANDED = 20 * 1024 * 1024
 ALLOWED_HOSTS = {'github.com', 'codeload.github.com'}
@@ -77,7 +82,8 @@ def stage(files, stage_root):
     no_symlink_path(target)
     require(not target.exists(), 'Staging target exists; use a fresh stage directory')
     target.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
-    temporary = Path(tempfile.mkdtemp(prefix='.asterisk-', dir=target.parent))
+    # An interrupted stage must not leave a second discoverable HA manifest.
+    temporary = Path(tempfile.mkdtemp(prefix='.asterisk-', dir=stage_root))
     try:
         for relative, data in files.items():
             file = temporary / relative
@@ -98,10 +104,15 @@ def install(staged, config_dir, apply=False):
     target = config_dir / 'custom_components' / 'asterisk'
     no_symlink_path(target)
     require(not target.exists(), 'Integration already exists; back it up and move it aside, or use HACS updates')
+    if target.parent.exists():
+        existing = component_layout.scan_manifests(target.parent)
+        require('asterisk' not in existing,
+                'Asterisk manifest already exists under another directory; move the backup outside custom_components')
     if not apply:
         return False
     target.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
-    temporary = Path(tempfile.mkdtemp(prefix='.asterisk-install-', dir=target.parent))
+    # HA scans dot directories too. Keep incomplete copies outside discovery.
+    temporary = Path(tempfile.mkdtemp(prefix='.asterisk-install-', dir=config_dir))
     try:
         shutil.copytree(staged, temporary, dirs_exist_ok=True)
         temporary.rename(target)
@@ -129,6 +140,8 @@ def main():
             data = download(lock)
         files = verified_files(data, lock)
         staged = stage(files, args.stage)
+        component_layout.validate_layout(staged.parent, expected_domain='asterisk',
+                                         expected_version=lock['version'], expected_path=staged)
         applied = install(staged, args.install_to, args.apply) if args.install_to else False
     except (ValueError, OSError, KeyError, zipfile.BadZipFile) as exc:
         parser.error(str(exc))

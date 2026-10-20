@@ -40,6 +40,19 @@ copies outside `/config/custom_components`, such as under
 `/config/.cisco-component-backups/<unique>/`; HA also scans dot directories.
 See the [component directory guidance](installation.md#staging).
 
+Before installing or starting HA, validate an offline copy of the planned full
+`custom_components` layout, including hidden children and the intended candidate:
+
+```sh
+python3 scripts/validate_component_layout.py \
+  --custom-components .local/ha-layout/custom_components \
+  --domain asterisk --version 1.0.5 \
+  --expected-path .local/ha-layout/custom_components/asterisk
+```
+
+This read-only manifest check imports no components and catches duplicate domains
+in visible and hidden directories. Still run the HA configuration check below.
+
 Example for a selected running Pod, after verifying the variables locally:
 
 ```bash
