@@ -67,6 +67,23 @@ call/media admission; incoming calls retain priority. Use only a deliberate
 operator action, never a recurring automation or an unattended start. An
 integration unloading will reject new Start requests.
 
+Wait for the phone's live assistant screen to show **Listening** before
+speaking the request. Preparation
+is not readiness. The `voice` action reports process lifecycle states such as
+`running`; it does not report speech stages or prove that a microphone is
+receiving audio. The runner's live screen separately shows **Listening**,
+**Thinking** and **Speaking**. Opening HA or the phone's status menu never starts
+listening. Stop ends the bounded session and never automatically starts another.
+Wake detection is available separately in the foreground pilot, not through
+the current HA/gateway session manager.
+
+While a voice lease is held, or its cleanup is uncertain, a compatible gateway
+refuses remote dial, speaker, answer and display changes with `voice_phone_busy`.
+Intercom checks both handsets. Incoming SIP calls, including timer/alarm rings,
+retain priority through the media controller; exact hangup, alert Stop, voice
+Stop and phone preferences remain available. A refusal is not a reason to retry
+automatically.
+
 This example performs validation without starting media. Replace the synthetic
 identifiers with the loaded entry and its real handset mapping:
 
@@ -107,10 +124,11 @@ owner's child process. Do not clear its state to force a restart.
 Responses contain a correlated `status`/`action_id` envelope and a fixed typed
 `voice` object: schema version, physical phone, original Start line, session ID,
 state, active flag, remaining seconds, Stop flags, and a sanitized error category.
-The returned line can differ from the alias used for Status. A new dry run instead
+The returned line can differ from the alias used for Status. A successful dry run
 returns `valid`, zero `network_actions`, false `microphone_started`, and the
-bounded duration; reusing a previous Start ID can return its original session
-result. No transcript, audio, private path or backend exception is returned.
+bounded duration, even when its request ID was used by a previous Start. Dry runs
+validate the current inputs and never replay a previous session result.
+No transcript, audio, private path or backend exception is returned.
 These local adapter checks do not constitute physical microphone, display,
 call-preemption, wake-word or unattended acceptance.
 
