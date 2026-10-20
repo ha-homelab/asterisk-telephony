@@ -192,7 +192,7 @@ Before installation or startup, check an offline copy of the planned full
 ```sh
 python3 scripts/validate_component_layout.py \
   --custom-components .local/ha-layout/custom_components \
-  --domain cisco_phone_control --version 0.5.0 \
+  --domain cisco_phone_control --version 0.5.1 \
   --expected-path .local/ha-layout/custom_components/cisco_phone_control
 ```
 
@@ -208,12 +208,43 @@ For rollback, disable pending alarms/timers first, unload/remove only this integ
 
 ## Validation
 
+### Schedule persistence and unload in 0.5.1
+
+Timer and alarm entity changes prepare a candidate while holding the schedule
+lock. They publish that candidate in memory only after its write completes.
+The schedule store retains HA's existing key and versioned JSON format, uses
+private atomic files, and surfaces write/serialization errors that the ordinary
+HA Store can otherwise log without raising. Shutdown-deferred or read-only
+writes cannot acknowledge a new schedule.
+
+Cancellation cannot stop a filesystem write already running in an executor.
+The coordinator therefore keeps ownership until that write settles. A private
+executor completion future also survives cancellation of HA's tracked jobs. If
+the save acknowledges success, memory reflects the committed candidate before
+deferred caller cancellation is reported. Inspect schedule status before retrying
+an interrupted request. Internal save cancellation or filesystem errors can have
+an uncertain on-disk outcome if replacement already occurred. A failed call does
+not prove that the old file survived.
+After a save failure, cancellation or unload is observed, the mutation starts
+no further phone action. An already dispatched action can have an unknown outcome.
+
+Unload fences new schedule changes and explicitly waits for the old write
+owner before allowing replacement setup. A service crossing unload does not
+start another save or external action. An interrupted claimed request remains
+available for idempotency checks instead of being blindly repeated.
+
+These guarantees cover the component's controlled write and reload paths;
+they are not a guarantee of alarm delivery during outages or process failure.
+Installing this source version and validating the running component are
+separate deployment steps.
+
 `python -m unittest discover -s tests -p 'test_phone_voice.py' -v` checks explicit voice consent, exact Stop identity, bounded typed responses and uncertain outcomes using fake clients. The pinned HA runtime also checks actual admin service dispatch, literal boolean rejection and Stop with stale AMI state.
 
 `python -m unittest discover -s tests -p 'test_phone_controls.py' -v` covers ownership, stale evidence, image path security, persistent claims, missed events and DST behavior without HA or network access. The optional pinned HA runtime additionally exercises entity platforms, config flow, actual component setup/unload, text privacy, unknown API outcomes and storage-failure suppression:
 
 ```sh
 .local/runtime-venv/bin/python -m unittest discover -s tests -p 'test_phone_controls_runtime.py' -v
+.local/runtime-venv/bin/python -m unittest discover -s tests -p 'test_schedule_*.py' -v
 ```
 
 These are synthetic tests, not a claim that any live handset answered an alarm. The implementation uses Home Assistant's [coordinator pattern](https://developers.home-assistant.io/docs/integration_fetching_data/) and [config-entry flow](https://developers.home-assistant.io/docs/config_entries_config_flow_handler/). Record live acceptance separately from code validation.

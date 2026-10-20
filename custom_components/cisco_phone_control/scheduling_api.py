@@ -1,4 +1,5 @@
 """Atomic, line-owned schedules for administrator clients and automations."""
+import asyncio
 import copy
 from datetime import time
 import hashlib
@@ -80,10 +81,13 @@ async def schedule(coordinator, primary, line, operation, **options):
         fresh = True
         try:
             data = await coordinator.client.snapshot()
-            coordinator.prepare_inventory(data)
-            coordinator.async_set_updated_data(data)
         except GatewayError:
             fresh = False
+        if coordinator._closing:
+            raise HomeAssistantError("Cisco phone controls are unloading")
+        if fresh:
+            coordinator.prepare_inventory(data)
+            coordinator.async_set_updated_data(data)
         phone = coordinator.phone(primary)
         if phone is None or line not in phone["lines"]:
             raise HomeAssistantError("The selected line does not belong to this handset")
@@ -153,12 +157,23 @@ async def schedule(coordinator, primary, line, operation, **options):
         candidate["schedule_requests"][request_id] = {"fingerprint": fingerprint, "state": "claimed"}
         if result == "not_configured":
             candidate["schedule_requests"][request_id]["result"] = result
-        coordinator.settings[primary] = candidate
+        if coordinator._closing:
+            raise HomeAssistantError("Cisco phone controls are unloading")
         try:
-            await coordinator._save()
+            cancelled = await coordinator._persist_settings({
+                "phones": {**coordinator.settings, primary: candidate},
+            })
         except Exception:
-            coordinator.settings[primary] = settings
             raise HomeAssistantError("Schedule storage failed; no operation was sent") from None
+        # An internal save cancellation is not an acknowledgement. A deferred
+        # caller cancellation is: publish that saved claim before propagating it.
+        coordinator.settings[primary] = candidate
+        if cancelled:
+            raise asyncio.CancelledError
+        # The claim may already be durable. Keep it for replay, but do not
+        # begin an action or another write once unload has started.
+        if coordinator._closing:
+            return status(coordinator, primary, line, "outcome_unknown", False)
         if stop:
             try:
                 await coordinator.perform(primary, "alert_stop", {"line_filter": stop_line,
@@ -170,12 +185,24 @@ async def schedule(coordinator, primary, line, operation, **options):
             result = "outcome_unknown"  # Local cancellation persisted; the gateway alert is unknown.
         elif operation == "alert_stop":
             result = "not_active"
+        if coordinator._closing:
+            return status(coordinator, primary, line, "outcome_unknown", False)
         if result != "outcome_unknown":
-            candidate["schedule_requests"][request_id]["state"] = "complete"
+            completed = copy.deepcopy(candidate)
+            completed["schedule_requests"][request_id]["state"] = "complete"
             try:
-                await coordinator._save()
+                cancelled = await coordinator._persist_settings({
+                    "phones": {**coordinator.settings, primary: completed},
+                })
             except Exception:
-                candidate["schedule_requests"][request_id]["state"] = "claimed"
                 result = "outcome_unknown"
+            else:
+                coordinator.settings[primary] = completed
+                if cancelled:
+                    raise asyncio.CancelledError
+        # Unload drains an entered save before replacement can load. A
+        # completed write stays complete, even if this response is uncertain.
+        if coordinator._closing:
+            return status(coordinator, primary, line, "outcome_unknown", False)
         coordinator.async_update_listeners()
         return status(coordinator, primary, line, result, fresh)

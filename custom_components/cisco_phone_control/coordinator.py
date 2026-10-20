@@ -7,7 +7,6 @@ import logging
 
 from homeassistant.exceptions import HomeAssistantError
 from homeassistant.helpers.event import async_track_time_interval
-from homeassistant.helpers.storage import Store
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, UpdateFailed
 from homeassistant.util import dt as dt_util
 
@@ -15,6 +14,7 @@ from .api import GatewayError
 from .const import DOMAIN
 from .model import owned_channel, read_image
 from .schedule import defaults, pending, start_timer, validate_settings
+from .storage import ScheduleStore, async_drain_task
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -27,7 +27,8 @@ class PhoneCoordinator(DataUpdateCoordinator):
         self.client = client
         self.settings = {}
         self.inputs = {}
-        self.store = Store(hass, 1, f"{DOMAIN}.{entry.entry_id}")
+        self.store = ScheduleStore(hass, 1, f"{DOMAIN}.{entry.entry_id}",
+                                   private=True, atomic_writes=True)
         self._settings_lock = asyncio.Lock()
         self._action_lock = asyncio.Lock()
         self._started_at = dt_util.utcnow().timestamp()
@@ -47,6 +48,23 @@ class PhoneCoordinator(DataUpdateCoordinator):
         if self._tick_remove:
             self._tick_remove()
 
+    async def async_close(self) -> None:
+        """Fence new changes and wait for the current persistence owner.
+
+        The config entry must not finish unloading while an old executor write
+        can still overwrite the same Store key after reload. Defer cancellation
+        until that write settles, keeping HA's outer setup lock held as well.
+        """
+        self.close()
+
+        async def drain_settings():
+            async with self._settings_lock:
+                pass
+
+        drain = asyncio.create_task(drain_settings(), name="cisco-schedule-close")
+        if await async_drain_task(drain):
+            raise asyncio.CancelledError
+
     async def _async_update_data(self):
         try:
             data = await self.client.snapshot()
@@ -64,33 +82,74 @@ class PhoneCoordinator(DataUpdateCoordinator):
     def phone(self, primary):
         return next((p for p in (self.data or {}).get("phones", []) if p["id"] == primary), None)
 
-    async def _save(self):
-        await self.store.async_save({"phones": copy.deepcopy(self.settings)})
+    async def _persist_settings(self, payload) -> bool:
+        """Finish an owned write before returning its deferred-cancel flag.
+
+        Call while holding _settings_lock. A cancelled await cannot stop an
+        executor write. Keep the save task shielded, including across repeated
+        caller cancellation, so that the write never outlives its lock.
+        Candidate callers must publish a successful write in memory before
+        propagating the returned cancellation flag.
+        """
+        if self._closing:
+            raise HomeAssistantError("Cisco phone controls are unloading")
+        write = asyncio.create_task(
+            self.store.async_save(copy.deepcopy(payload)), name="cisco-schedule-save")
+        return await async_drain_task(write)
+
+    async def _save(self) -> None:
+        if await self._persist_settings({"phones": self.settings}):
+            raise asyncio.CancelledError
 
     async def configure(self, primary, key, value):
         async with self._settings_lock:
+            if self._closing:
+                raise HomeAssistantError("Cisco phone controls are unloading")
+            settings = self.settings[primary]
+            candidate = copy.deepcopy(settings)
             # A deliberate time/day edit saves the displayed schedule without
             # enabling it. Capture ownership once; later edits keep that owner.
             saves_alarm = key in ("alarm_time", "weekdays") or key == "alarm_enabled" and value is True
-            if saves_alarm and not self.settings[primary]["alarm_configured"]:
-                self.settings[primary]["alarm_line"] = self.settings[primary]["line"]
-                self.settings[primary]["alarm_configured"] = True
-            self.settings[primary][key] = value
-            await self._save()
-        self.async_update_listeners()
+            if saves_alarm and not candidate["alarm_configured"]:
+                candidate["alarm_line"] = candidate["line"]
+                candidate["alarm_configured"] = True
+            candidate[key] = copy.deepcopy(value)
+            candidate_settings = copy.deepcopy(self.settings)
+            candidate_settings[primary] = candidate
+            # Publish only a completed write, preserving the live row's identity.
+            # A deferred cancellation may still mean the candidate was saved.
+            cancelled = await self._persist_settings({"phones": candidate_settings})
+            settings.update(copy.deepcopy(candidate))
+        if not self._closing:
+            self.async_update_listeners()
+        if cancelled:
+            raise asyncio.CancelledError
+        if self._closing:
+            raise HomeAssistantError("Cisco phone controls are unloading")
         if key == "alarm_enabled" and value is False:
             await self.stop_alert(primary, kind="alarm")
 
     async def timer(self, primary, start):
         async with self._settings_lock:
+            if self._closing:
+                raise HomeAssistantError("Cisco phone controls are unloading")
             settings = self.settings[primary]
+            candidate = copy.deepcopy(settings)
             if start:
-                start_timer(settings, dt_util.utcnow())
+                start_timer(candidate, dt_util.utcnow())
             else:
-                settings["timer_deadline"] = None
-                settings["status"] = "Timer cancelled"
-            await self._save()
-        self.async_update_listeners()
+                candidate["timer_deadline"] = None
+                candidate["status"] = "Timer cancelled"
+            candidate_settings = copy.deepcopy(self.settings)
+            candidate_settings[primary] = candidate
+            cancelled = await self._persist_settings({"phones": candidate_settings})
+            settings.update(copy.deepcopy(candidate))
+        if not self._closing:
+            self.async_update_listeners()
+        if cancelled:
+            raise asyncio.CancelledError
+        if self._closing:
+            raise HomeAssistantError("Cisco phone controls are unloading")
         if not start:
             await self.stop_alert(primary, kind="timer")
 

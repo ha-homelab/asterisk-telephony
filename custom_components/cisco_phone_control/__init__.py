@@ -104,4 +104,9 @@ async def async_setup_entry(hass, entry):
 
 
 async def async_unload_entry(hass, entry):
-    return await hass.config_entries.async_unload_platforms(entry, PLATFORMS)
+    if not await hass.config_entries.async_unload_platforms(entry, PLATFORMS):
+        return False
+    # Hold replacement setup until the previous coordinator's writes finish.
+    # An on-unload callback alone has a bounded wait in Home Assistant.
+    await entry.runtime_data.async_close()
+    return True
