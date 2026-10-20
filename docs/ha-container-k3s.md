@@ -35,7 +35,10 @@ on the PBX to match. HA [documents how to change the VoIP port](https://www.home
 The simplest approach is to run the installer on a host where the config PVC
 or volume is accessible as a directory, under HA's owner account. If you can
 only access it through the Pod, prepare staging locally first, make a backup,
-and use your usual method to copy files into the PVC.
+and use your usual method to copy files into the PVC. Keep backup and staging
+copies outside `/config/custom_components`, such as under
+`/config/.cisco-component-backups/<unique>/`; HA also scans dot directories.
+See the [component directory guidance](installation.md#staging).
 
 Example for a selected running Pod, after verifying the variables locally:
 

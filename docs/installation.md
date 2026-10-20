@@ -34,6 +34,13 @@ SHA-256 and size are checked in offline mode too. Do not upload the archive or
 extracted component to this public repository. Existing staging directories are
 not overwritten; choose a new path.
 
+Keep staging, backups and quarantined component copies **outside**
+`/config/custom_components`, for example under
+`/config/.cisco-component-backups/<unique>/`. HA scans every child directory of
+`custom_components`, including dot directories; a retained copy with the same
+manifest domain can interfere with the installed integration. Keep only the
+intended installed component directories there.
+
 ## Installing into a locally accessible /config
 
 1. Back up HA, including `.storage`, and preserve the current
@@ -70,8 +77,8 @@ installer does not execute the downloaded component's code.
 ## Rollback
 
 Preserve the current `.storage` and stop HA. Move the new component to a local
-quarantine directory, restore the previously saved version compatible with
-your HA, check the configuration, and start HA. Do not delete the config entry
+quarantine directory outside `custom_components`, restore the saved version
+compatible with your HA, check the configuration, and start HA. Do not delete the config entry
 or entity registry as a first step: this may break the mapping. Roll back
 packages and the dashboard separately using their previous files.
 
