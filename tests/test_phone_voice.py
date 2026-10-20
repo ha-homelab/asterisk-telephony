@@ -90,28 +90,64 @@ class VoiceTests(unittest.IsolatedAsyncioTestCase):
         self.assertNotIn("secret", str(raised.exception))
         self.assertEqual(self.client.action.await_count, 3)  # exactly once per explicit call
         self.client.action.side_effect = asyncio.CancelledError()
-        with self.assertRaises(asyncio.CancelledError):
-            await voice_api.voice(self.coordinator, "201", "202", "start", **self.consent)
+        for options in ({}, {"dry_run": True}):
+            with self.subTest(options=options):
+                self.client.action.reset_mock()
+                with self.assertRaises(asyncio.CancelledError):
+                    await voice_api.voice(self.coordinator, "201", "202", "start", **self.consent, **options)
+                self.client.action.assert_awaited_once()
 
-    async def test_dry_run_is_exact_and_replay_can_return_session(self):
+    async def test_dry_run_requires_exact_metadata(self):
         dry = {"schema_version": 1, "phone": "201", "line": "202", "valid": True,
                "network_actions": 0, "microphone_started": False, "duration_seconds": 30}
-        for change in (None, {"valid": 1}, {"network_actions": False}, {"microphone_started": 0},
+        self.client.action.return_value = {"status": "accepted", "action_id": "voice-test-001", "voice": dry}
+        result = await voice_api.voice(self.coordinator, "201", "202", "start", **self.consent, dry_run=True)
+        self.assertEqual(result, self.client.action.return_value)
+        self.client.action.assert_awaited_once_with(
+            "202", "voice_start",
+            {"attended": True, "exclusive_media": True, "enable_microphone": True, "dry_run": True},
+            "voice-test-001")
+        self.client.voice_status.assert_not_awaited()
+        self.client.snapshot.assert_not_awaited()
+        for change in ({"valid": 1}, {"network_actions": False}, {"network_actions": 1},
+                       {"microphone_started": 0}, {"microphone_started": True},
                        {"duration_seconds": 0}, {"duration_seconds": 31}, {"duration_seconds": float("nan")},
                        {"private": "hidden"}):
-            self.client.action.return_value = {"status": "accepted", "action_id": "voice-test-001", "voice": {**dry, **(change or {})}}
-            if change is None:
-                result = await voice_api.voice(self.coordinator, "201", "202", "start", **self.consent, dry_run=True)
-                self.assertEqual(result["voice"], dry)
-            else:
+            with self.subTest(change=change):
+                self.client.action.return_value["voice"] = {**dry, **change}
                 with self.assertRaises(voice_api.VoiceError):
                     await voice_api.voice(self.coordinator, "201", "202", "start", **self.consent, dry_run=True)
-        self.client.action.return_value["voice"] = status()
-        result = await voice_api.voice(self.coordinator, "201", "202", "start", **self.consent, dry_run=True)
-        self.assertIn("session_id", result["voice"])
-        self.client.action.return_value["voice"] = dry
-        with self.assertRaises(voice_api.VoiceError):
-            await voice_api.voice(self.coordinator, "201", "202", "start", **self.consent)
+        for missing in dry:
+            with self.subTest(missing=missing):
+                self.client.action.return_value["voice"] = {key: value for key, value in dry.items() if key != missing}
+                with self.assertRaises(voice_api.VoiceError):
+                    await voice_api.voice(self.coordinator, "201", "202", "start", **self.consent, dry_run=True)
+
+    async def test_dry_run_rejects_session_response_without_retry(self):
+        for session in (status(), status(state="stopped", active=False, remaining_seconds=0, stop_confirmed=True)):
+            with self.subTest(state=session["state"]):
+                self.client.action.reset_mock()
+                self.client.action.side_effect = [
+                    {"status": "accepted", "action_id": "voice-test-001", "voice": session},
+                    AssertionError("A dry-run response mismatch must not trigger another action"),
+                ]
+                with self.assertRaisesRegex(voice_api.VoiceError, "unconfirmed"):
+                    await voice_api.voice(self.coordinator, "201", "202", "start", **self.consent, dry_run=True)
+                self.client.action.assert_awaited_once()
+                self.client.voice_status.assert_not_awaited()
+                self.client.snapshot.assert_not_awaited()
+                self.coordinator.perform.assert_not_awaited()
+
+    async def test_dry_run_metadata_cannot_acknowledge_other_requests(self):
+        dry = {"schema_version": 1, "phone": "201", "line": "202", "valid": True,
+               "network_actions": 0, "microphone_started": False, "duration_seconds": 30}
+        self.client.action.return_value = {"status": "accepted", "action_id": "voice-test-001", "voice": dry}
+        self.client.voice_status.return_value = {"status": "ok", "voice": dry}
+        for operation, options in (("start", self.consent), ("start", {**self.consent, "dry_run": False}),
+                                   ("status", {}), ("stop", {"request_id": "voice-test-001", "session_id": "a" * 32})):
+            with self.subTest(operation=operation, options=options):
+                with self.assertRaises(voice_api.VoiceError):
+                    await voice_api.voice(self.coordinator, "201", "202", operation, **options)
 
     async def test_unloading_blocks_start_but_allows_status_and_exact_stop(self):
         self.coordinator._closing = True

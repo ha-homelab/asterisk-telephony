@@ -43,9 +43,11 @@ def validate_response(result, primary, lines, operation, request_id=None, sessio
     require(isinstance(value, dict))
     require(type(value.get("schema_version")) is int and value["schema_version"] == 1
             and value.get("phone") == primary and value.get("line") in lines)
-    if set(value) == DRY_FIELDS:
+    if operation == "start" and dry_run is True:
+        require(set(value) == DRY_FIELDS,
+                "Voice dry-run unconfirmed; read status before any new attempt")
         duration = value["duration_seconds"]
-        require(operation == "start" and dry_run is True and value["valid"] is True
+        require(value["valid"] is True
                 and type(value["network_actions"]) is int and value["network_actions"] == 0
                 and value["microphone_started"] is False
                 and bounded_seconds(duration) and duration > 0)
