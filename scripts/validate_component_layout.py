@@ -1,5 +1,9 @@
 #!/usr/bin/env python3
-"""Check an offline custom_components layout by reading manifests only."""
+"""Check an offline layout without importing components or changing files.
+
+Inspect directory and manifest safety, reject duplicate domains, then verify the
+requested component's path and version. This does not validate HA compatibility.
+"""
 import argparse
 import json
 import os
@@ -23,7 +27,8 @@ def absolute_path(value):
     return path if path.is_absolute() else Path.cwd() / path
 
 
-def checked_directory(path):
+def check_directory_ancestry(path):
+    """Require a real directory at every level, including the requested path."""
     # Do not resolve symlinks before checking: resolving would hide them.
     for item in reversed((path, *path.parents)):
         info = item.lstat()
@@ -44,12 +49,14 @@ def invalid_constant(value):
     raise ValueError('Manifest contains a nonstandard JSON number')
 
 
-def file_identity(info):
+def stat_fingerprint(info):
+    """Identity and metadata used to detect changes while reading."""
     return (info.st_dev, info.st_ino, info.st_mode, info.st_size,
             info.st_mtime_ns, info.st_ctime_ns)
 
 
-def read_manifest(directory_fd):
+def read_manifest_bytes(directory_fd):
+    """Read one bounded, unchanged regular file; absence means no component."""
     try:
         before = os.stat('manifest.json', dir_fd=directory_fd, follow_symlinks=False)
     except FileNotFoundError:
@@ -60,13 +67,18 @@ def read_manifest(directory_fd):
                  dir_fd=directory_fd)
     with os.fdopen(fd, 'rb') as stream:
         opened = os.fstat(stream.fileno())
-        require(file_identity(opened) == file_identity(before), 'Manifest changed during validation')
+        require(stat_fingerprint(opened) == stat_fingerprint(before), 'Manifest changed during validation')
         raw = stream.read(MAX_MANIFEST_BYTES + 1)
         require(len(raw) <= MAX_MANIFEST_BYTES, 'Manifest exceeds size limit')
         final = os.fstat(stream.fileno())
     current = os.stat('manifest.json', dir_fd=directory_fd, follow_symlinks=False)
-    require(file_identity(before) == file_identity(final) == file_identity(current),
+    require(stat_fingerprint(before) == stat_fingerprint(final) == stat_fingerprint(current),
             'Manifest changed during validation')
+    return raw
+
+
+def parse_manifest(raw):
+    """Parse the domain and version only, without executing component code."""
     try:
         manifest = json.loads(raw, object_pairs_hook=unique_object, parse_constant=invalid_constant)
     except (json.JSONDecodeError, UnicodeDecodeError, RecursionError) as exc:
@@ -80,6 +92,24 @@ def read_manifest(directory_fd):
     return {'domain': domain, 'version': version}
 
 
+def read_child_manifest(root_fd, child):
+    """Open a direct child without following links, then read its manifest."""
+    listed = child.stat(follow_symlinks=False)
+    require(not stat.S_ISLNK(listed.st_mode), 'Layout child contains a symlink')
+    if not stat.S_ISDIR(listed.st_mode):
+        return None
+    child_fd = os.open(child.name, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW,
+                       dir_fd=root_fd)
+    try:
+        opened = os.fstat(child_fd)
+        require((listed.st_dev, listed.st_ino) == (opened.st_dev, opened.st_ino),
+                'Layout child changed during validation')
+        raw = read_manifest_bytes(child_fd)
+        return None if raw is None else parse_manifest(raw)
+    finally:
+        os.close(child_fd)
+
+
 def scan_manifests(root: Path) -> dict:
     """Return domain -> {domain, version, path}; reject duplicates, including hidden copies.
 
@@ -88,38 +118,28 @@ def scan_manifests(root: Path) -> dict:
     """
     root = absolute_path(root)
     try:
-        initial = checked_directory(root)
+        root_before_open = check_directory_ancestry(root)
         root_fd = os.open(root, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW)
         try:
-            opened = os.fstat(root_fd)
-            require((initial.st_dev, initial.st_ino) == (opened.st_dev, opened.st_ino),
+            root_opened = os.fstat(root_fd)
+            require((root_before_open.st_dev, root_before_open.st_ino) ==
+                    (root_opened.st_dev, root_opened.st_ino),
                     'Layout directory changed during validation')
-            result = {}
+            manifests_by_domain = {}
             with os.scandir(root_fd) as children:
                 for count, child in enumerate(children, 1):
                     require(count <= MAX_CHILDREN, 'Layout has too many direct children')
-                    info = child.stat(follow_symlinks=False)
-                    require(not stat.S_ISLNK(info.st_mode), 'Layout child contains a symlink')
-                    if not stat.S_ISDIR(info.st_mode):
-                        continue
-                    child_fd = os.open(child.name, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW,
-                                       dir_fd=root_fd)
-                    try:
-                        current = os.fstat(child_fd)
-                        require((info.st_dev, info.st_ino) == (current.st_dev, current.st_ino),
-                                'Layout child changed during validation')
-                        manifest = read_manifest(child_fd)
-                    finally:
-                        os.close(child_fd)
+                    # Hidden children count too: HA discovers their manifests.
+                    manifest = read_child_manifest(root_fd, child)
                     if manifest is None:
                         continue
                     domain = manifest['domain']
-                    require(domain not in result, f'Duplicate manifest domain: {domain}')
-                    result[domain] = {**manifest, 'path': str(root / child.name)}
-            current = root.lstat()
-            require(file_identity(current) == file_identity(opened),
+                    require(domain not in manifests_by_domain, f'Duplicate manifest domain: {domain}')
+                    manifests_by_domain[domain] = {**manifest, 'path': str(root / child.name)}
+            root_after_scan = root.lstat()
+            require(stat_fingerprint(root_after_scan) == stat_fingerprint(root_opened),
                     'Layout directory changed during validation')
-            return result
+            return manifests_by_domain
         finally:
             os.close(root_fd)
     except OSError as exc:
@@ -136,21 +156,24 @@ def validate_layout(root: Path, *, expected_domain: str, expected_version: str,
     root, expected_path = absolute_path(root), absolute_path(expected_path)
     require(expected_path == root / expected_domain,
             'Expected path must be the explicit custom_components/domain directory')
+    # Scan the whole directory before choosing the target: any duplicate fails.
     manifests = scan_manifests(root)
     require(expected_domain in manifests, 'Expected integration manifest is missing')
-    selected = manifests[expected_domain]
-    require(selected['path'] == str(expected_path), 'Expected integration is at the wrong path')
-    require(selected['version'] == expected_version, 'Expected integration version does not match')
-    return {'ok': True, 'custom_components': str(root), **selected,
+    selected_manifest = manifests[expected_domain]
+    require(selected_manifest['path'] == str(expected_path), 'Expected integration is at the wrong path')
+    require(selected_manifest['version'] == expected_version, 'Expected integration version does not match')
+    return {'ok': True, 'custom_components': str(root), **selected_manifest,
             'manifest_count': len(manifests)}
 
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument('--custom-components', required=True, type=Path)
-    parser.add_argument('--domain', required=True)
-    parser.add_argument('--version', required=True)
-    parser.add_argument('--expected-path', required=True, type=Path)
+    parser.add_argument('--custom-components', required=True, type=Path,
+                        help='Full offline layout to scan, including hidden children')
+    parser.add_argument('--domain', required=True, help='Intended integration domain')
+    parser.add_argument('--version', required=True, help='Required manifest version')
+    parser.add_argument('--expected-path', required=True, type=Path,
+                        help='Required component path: the scan directory followed by the domain')
     args = parser.parse_args()
     try:
         result = validate_layout(args.custom_components, expected_domain=args.domain,

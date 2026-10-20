@@ -137,4 +137,47 @@ class InstallerTests(unittest.TestCase):
             manifest = json.loads((config/'custom_components/asterisk/manifest.json').read_bytes())
             self.assertEqual(manifest, {'domain':'asterisk','version':'1.0.5'})
 
+    def test_failed_copy_cleans_partial_install_and_preserves_existing_and_staged_files(self):
+        data, lock = archive()
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp).resolve(); config = root/'config'; config.mkdir()
+            (config/'configuration.yaml').write_text('synthetic existing config')
+            staged = installer.stage(installer.verified_files(data, lock), root/'stage')
+            staged_before = {str(p.relative_to(staged)):p.read_bytes() for p in staged.rglob('*') if p.is_file()}
+
+            def failed_copy(source, destination, **kwargs):
+                (Path(destination)/'manifest.json').write_bytes((source/'manifest.json').read_bytes())
+                raise OSError('synthetic interrupted copy')
+
+            with mock.patch.object(installer.shutil, 'copytree', side_effect=failed_copy), \
+                    self.assertRaisesRegex(OSError, 'synthetic interrupted copy'):
+                installer.install(staged, config, apply=True)
+            self.assertFalse((config/'custom_components/asterisk').exists())
+            self.assertEqual(list(config.glob('.asterisk-install-*')), [])
+            self.assertEqual(list((config/'custom_components').iterdir()), [])
+            self.assertEqual((config/'configuration.yaml').read_text(), 'synthetic existing config')
+            self.assertEqual({str(p.relative_to(staged)):p.read_bytes() for p in staged.rglob('*') if p.is_file()}, staged_before)
+
+    def test_failed_publish_cleans_complete_copy_and_preserves_staged_files(self):
+        data, lock = archive()
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp).resolve(); config = root/'config'; config.mkdir()
+            (config/'configuration.yaml').write_text('synthetic existing config')
+            staged = installer.stage(installer.verified_files(data, lock), root/'stage')
+            staged_before = {str(p.relative_to(staged)):p.read_bytes() for p in staged.rglob('*') if p.is_file()}
+
+            def failed_rename(source, destination):
+                self.assertTrue((source/'manifest.json').is_file())
+                self.assertEqual(destination, config/'custom_components/asterisk')
+                raise OSError('synthetic publish failure')
+
+            with mock.patch.object(Path, 'rename', failed_rename), \
+                    self.assertRaisesRegex(OSError, 'synthetic publish failure'):
+                installer.install(staged, config, apply=True)
+            self.assertFalse((config/'custom_components/asterisk').exists())
+            self.assertEqual(list(config.glob('.asterisk-install-*')), [])
+            self.assertEqual(list((config/'custom_components').iterdir()), [])
+            self.assertEqual((config/'configuration.yaml').read_text(), 'synthetic existing config')
+            self.assertEqual({str(p.relative_to(staged)):p.read_bytes() for p in staged.rglob('*') if p.is_file()}, staged_before)
+
 if __name__ == '__main__': unittest.main()

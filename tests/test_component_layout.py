@@ -1,4 +1,5 @@
 import importlib.util
+from contextlib import contextmanager
 import json
 from pathlib import Path
 import stat
@@ -6,6 +7,7 @@ import subprocess
 import sys
 import tempfile
 import unittest
+from unittest import mock
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -143,6 +145,93 @@ class ComponentLayoutTests(unittest.TestCase):
         invalid = subprocess.run(self.command(), capture_output=True, text=True, timeout=10)
         self.assertNotEqual(invalid.returncode, 0)
         self.assertNotIn('Traceback', invalid.stderr)
+
+    def test_manifest_size_limit_accepts_boundary_and_rejects_one_extra_byte(self):
+        manifest = self.component / 'manifest.json'
+        raw = manifest.read_bytes()
+        bounded = raw + b' ' * (256 * 1024 - len(raw))
+        manifest.write_bytes(bounded)
+        self.assertTrue(self.validate()['ok'])
+        manifest.write_bytes(bounded + b' ')
+        with self.assertRaises(ValueError):
+            self.validate()
+
+    def test_child_count_limit_includes_files_without_manifests(self):
+        for index in range(1023):
+            (self.root / f'ordinary-file-{index}').touch()
+        self.assertTrue(self.validate()['ok'])
+        (self.root / 'one-too-many').touch()
+        with self.assertRaises(ValueError):
+            self.validate()
+
+    def test_duplicate_json_keys_are_rejected_at_top_level_and_nested(self):
+        manifest = self.component / 'manifest.json'
+        for raw in (
+            b'{"domain":"cisco_phone_control","domain":"cisco_phone_control","version":"0.5.0"}',
+            b'{"domain":"cisco_phone_control","version":"0.5.0","extra":{"key":1,"key":2}}',
+        ):
+            manifest.write_bytes(raw)
+            with self.subTest(raw=raw), self.assertRaises(ValueError):
+                self.validate()
+
+    def test_nonstandard_json_numbers_are_rejected_even_in_unused_fields(self):
+        manifest = self.component / 'manifest.json'
+        for number in ('NaN', 'Infinity', '-Infinity'):
+            manifest.write_text('{"domain":"cisco_phone_control","version":"0.5.0","extra":' + number + '}')
+            with self.subTest(number=number), self.assertRaises(ValueError):
+                self.validate()
+
+    def test_manifest_replaced_between_stat_and_open_is_rejected(self):
+        manifest = self.component / 'manifest.json'
+        replacement = self.base / 'replacement.json'
+        replacement.write_bytes(manifest.read_bytes())
+        original_open = layout.os.open
+        replacements = []
+
+        def replace_before_open(path, flags, *args, **kwargs):
+            if path == 'manifest.json' and not replacements:
+                replacement.replace(manifest)
+                replacements.append(path)
+            return original_open(path, flags, *args, **kwargs)
+
+        with mock.patch.object(layout.os, 'open', side_effect=replace_before_open), self.assertRaises(ValueError):
+            self.validate()
+        self.assertEqual(len(replacements), 1)
+        self.assertFalse(replacement.exists())
+        self.assertEqual(json.loads(manifest.read_bytes())['version'], '0.5.0')
+
+    def test_manifest_replaced_after_open_is_rejected(self):
+        manifest = self.component / 'manifest.json'
+        replacement = self.base / 'replacement.json'
+        replacement.write_bytes(manifest.read_bytes())
+        original_fstat = layout.os.fstat
+        file_observations = []
+
+        def replace_during_read(fd):
+            info = original_fstat(fd)
+            if stat.S_ISREG(info.st_mode):
+                file_observations.append(fd)
+                if len(file_observations) == 2:
+                    replacement.replace(manifest)
+            return info
+
+        with mock.patch.object(layout.os, 'fstat', side_effect=replace_during_read), self.assertRaises(ValueError):
+            self.validate()
+        self.assertEqual(len(file_observations), 2)
+        self.assertFalse(replacement.exists())
+
+    def test_child_added_during_scan_is_rejected(self):
+        original_scandir = layout.os.scandir
+
+        @contextmanager
+        def changed_scan(path):
+            with original_scandir(path) as entries:
+                yield entries
+            (self.root / 'concurrent-child').touch()
+
+        with mock.patch.object(layout.os, 'scandir', side_effect=changed_scan), self.assertRaises(ValueError):
+            self.validate()
+        self.assertTrue((self.root / 'concurrent-child').exists())
 
 
 if __name__ == '__main__':

@@ -52,14 +52,21 @@ python3 scripts/validate_component_layout.py \
   --expected-path .local/ha-layout/custom_components/asterisk
 ```
 
-The validator parses manifests and detects visible or hidden duplicate domains.
-It does not import components or write files. It does not replace HA's
-configuration check or runtime verification.
+The validator checks the layout in three phases:
 
-The installer also validates the staged domain, version and path automatically.
-Before installing, it scans an existing `custom_components` directory and refuses
-duplicate domains or an Asterisk manifest under another name. Keep the manual
-full-copy check for upgrades and component copies installed by other methods.
+1. Check directory paths and direct-child manifests for safe access and valid JSON.
+2. Reject every duplicate manifest domain, including hidden copies and duplicates
+   unrelated to the intended integration.
+3. Require the intended domain, version and exact `custom_components/domain` path.
+
+It is read-only and imports no component code. Success confirms the layout only;
+it does not validate the full HA manifest schema, HA compatibility or runtime
+behavior. Still run HA's configuration check and runtime verification.
+
+The installer validates its staged layout automatically. Its target preflight
+checks the existing configuration directory before writing there, rejecting duplicate
+domains or an Asterisk manifest under another name. Keep the manual full-copy
+check for upgrades and component copies installed by other methods.
 
 ## Installing into a locally accessible /config
 
@@ -77,7 +84,11 @@ python3 scripts/stage_integration.py \
   --install-to /absolute/path/to/ha-config --apply
 ```
 
-Without `--apply`, even `--install-to` only stages and validates files.
+Without `--apply`, even `--install-to` only stages files and runs read-only target
+preflight. Staging and `--apply` installation each build a complete temporary copy
+outside `custom_components`, then rename it into its intended path. The installer
+never starts or restarts HA.
+
 The script requires `configuration.yaml`, rejects symlinks in the path, and
 refuses to overwrite an installed integration. On macOS, `/tmp` and `/var` may
 be system symlinks; use the canonical path. New files use mode `0600` and

@@ -15,6 +15,8 @@ import urllib.parse
 import zipfile
 
 ROOT = Path(__file__).resolve().parents[1]
+# Load our sibling helper even when the CLI runs outside the repository.
+# This never imports the downloaded Home Assistant component.
 _layout_spec = importlib.util.spec_from_file_location(
     'component_layout', Path(__file__).with_name('validate_component_layout.py'))
 component_layout = importlib.util.module_from_spec(_layout_spec)
@@ -76,48 +78,63 @@ def no_symlink_path(path):
         require(not item.is_symlink(), 'Target path contains a symlink')
 
 def stage(files, stage_root):
+    """Build a complete staged component, then publish it at its intended path."""
     stage_root = Path(stage_root)
     no_symlink_path(stage_root)
-    target = stage_root / 'custom_components' / 'asterisk'
-    no_symlink_path(target)
-    require(not target.exists(), 'Staging target exists; use a fresh stage directory')
-    target.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
+    staged_component = stage_root / 'custom_components' / 'asterisk'
+    no_symlink_path(staged_component)
+    require(not staged_component.exists(), 'Staging target exists; use a fresh stage directory')
+    staged_component.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
     # An interrupted stage must not leave a second discoverable HA manifest.
-    temporary = Path(tempfile.mkdtemp(prefix='.asterisk-', dir=stage_root))
+    temporary_dir = Path(tempfile.mkdtemp(prefix='.asterisk-', dir=stage_root))
     try:
         for relative, data in files.items():
-            file = temporary / relative
+            file = temporary_dir / relative
             file.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
             with file.open('xb') as stream:
                 os.chmod(file, 0o600)
                 stream.write(data)
-        temporary.rename(target)
+        # Only the completed directory is moved into the discovery layout.
+        temporary_dir.rename(staged_component)
     except BaseException:
-        shutil.rmtree(temporary, ignore_errors=True)
+        shutil.rmtree(temporary_dir, ignore_errors=True)
         raise
-    return target
+    return staged_component
 
-def install(staged, config_dir, apply=False):
-    config_dir = Path(config_dir)
+
+def check_install_target(config_dir):
+    """Validate the existing HA directory and return a vacant install path.
+
+    This preflight only reads files; it is also used without --apply.
+    """
     no_symlink_path(config_dir)
     require(config_dir.is_dir() and (config_dir / 'configuration.yaml').is_file(), 'Choose the real existing HA config directory')
-    target = config_dir / 'custom_components' / 'asterisk'
-    no_symlink_path(target)
-    require(not target.exists(), 'Integration already exists; back it up and move it aside, or use HACS updates')
-    if target.parent.exists():
-        existing = component_layout.scan_manifests(target.parent)
-        require('asterisk' not in existing,
+    target_dir = config_dir / 'custom_components' / 'asterisk'
+    no_symlink_path(target_dir)
+    require(not target_dir.exists(), 'Integration already exists; back it up and move it aside, or use HACS updates')
+    if target_dir.parent.exists():
+        existing_manifests = component_layout.scan_manifests(target_dir.parent)
+        require('asterisk' not in existing_manifests,
                 'Asterisk manifest already exists under another directory; move the backup outside custom_components')
+    return target_dir
+
+
+def install(staged, config_dir, apply=False):
+    """Preflight first; copy and publish only when explicitly requested."""
+    config_dir = Path(config_dir)
+    target_dir = check_install_target(config_dir)
     if not apply:
         return False
-    target.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
+
+    target_dir.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
     # HA scans dot directories too. Keep incomplete copies outside discovery.
-    temporary = Path(tempfile.mkdtemp(prefix='.asterisk-install-', dir=config_dir))
+    temporary_dir = Path(tempfile.mkdtemp(prefix='.asterisk-install-', dir=config_dir))
     try:
-        shutil.copytree(staged, temporary, dirs_exist_ok=True)
-        temporary.rename(target)
+        shutil.copytree(staged, temporary_dir, dirs_exist_ok=True)
+        # Publish the complete copy; never expose a partially copied component.
+        temporary_dir.rename(target_dir)
     except BaseException:
-        shutil.rmtree(temporary, ignore_errors=True)
+        shutil.rmtree(temporary_dir, ignore_errors=True)
         raise
     return True
 
@@ -135,14 +152,16 @@ def main():
         lock = json.loads(args.lock.read_text())
         if args.archive:
             require(args.archive.stat().st_size <= MAX_ARCHIVE, 'Archive exceeds size limit')
-            data = args.archive.read_bytes()
+            archive_bytes = args.archive.read_bytes()
         else:
-            data = download(lock)
-        files = verified_files(data, lock)
-        staged = stage(files, args.stage)
-        component_layout.validate_layout(staged.parent, expected_domain='asterisk',
-                                         expected_version=lock['version'], expected_path=staged)
-        applied = install(staged, args.install_to, args.apply) if args.install_to else False
+            archive_bytes = download(lock)
+
+        component_files = verified_files(archive_bytes, lock)
+        staged_component = stage(component_files, args.stage)
+        component_layout.validate_layout(staged_component.parent, expected_domain='asterisk',
+                                         expected_version=lock['version'], expected_path=staged_component)
+
+        applied = install(staged_component, args.install_to, args.apply) if args.install_to else False
     except (ValueError, OSError, KeyError, zipfile.BadZipFile) as exc:
         parser.error(str(exc))
     print('Pinned integration verified and ' + ('installed. Restart HA only after config validation.' if applied else 'staged only. HA was not changed or restarted.'))
