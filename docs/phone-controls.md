@@ -40,6 +40,80 @@ Each device exposes a **Line** selector and a **Dial destination** selector cont
 
 **Gateway auto-answer** is an explicit opt-in, off by default. The gateway answers a freshly observed, isolated incoming `Ringing` channel at most once for that call. Timer and alarm alerts are excluded, and the HA **Answer** action also refuses them: answer or reject on the physical phone, or use **Stop alert**. Auto-answer is not native Cisco provisioning or a generic SIP `Alert-Info` trick. Consider who can call the handset before enabling it.
 
+## Attended voice sessions
+
+Version 0.5 adds the administrator-only `cisco_phone_control.voice` action for the optional
+[gateway voice controller](https://github.com/4alvit/cisco-home-telephony/blob/main/docs/voice-control.md).
+The gateway must have an explicitly enabled private registry, a reviewed runner
+runtime with its live dependencies, and persistent controller state. Installing
+this HA component alone does not enable microphone access. This first version is
+manual and attended, with at most 30 seconds of media per attempt. It adds a
+response action; the existing entity IDs and dashboard controls do not change.
+
+Supply `entry_id`, the primary physical handset ID as `phone`, an exact owned
+`line`, and `operation: status`, `start`, or `stop`. The action does not change the
+Line selector. Status and Stop use the loaded entry's saved handset mapping and
+contact the controller directly, without an AMI refresh or waiting for ordinary
+call actions. They remain usable when AMI fails **after the entry has loaded**.
+Initial setup, including setup after an HA restart, still needs a successful AMI
+inventory. If that prevents loading, use the gateway's CLI or physical phone
+Applications menu to reach voice status and Stop.
+
+Start requires `request_id` plus literal `true` for all three fields:
+`attended` (the operator is present), `exclusive_media` (phone audio is reserved
+for this attempt), and `enable_microphone` (explicit microphone permission).
+Strings such as `"true"` and numeric `1` are refused. The runner checks current
+call/media admission; incoming calls retain priority. Use only a deliberate
+operator action, never a recurring automation or an unattended start. An
+integration unloading will reject new Start requests.
+
+This example performs validation without starting media. Replace the synthetic
+identifiers with the loaded entry and its real handset mapping:
+
+```yaml
+action: cisco_phone_control.voice
+data:
+  entry_id: REPLACE_WITH_ACTUAL_ENTRY_ID
+  phone: "201"
+  line: "202"
+  operation: start
+  request_id: replace-with-a-new-deliberate-attempt-id
+  attended: true
+  exclusive_media: true
+  enable_microphone: true
+  dry_run: true
+response_variable: voice_result
+```
+
+For an attended live attempt, explicitly set `dry_run: false` and use a new
+request ID after reviewing validation. Start and Stop both require a stable
+8–128 character `request_id` containing letters, digits, `_`, `.`, `:`, or `-`.
+Start uses it for duplicate suppression; Stop uses it for response correlation.
+Replay history is bounded to 128 in-memory records, and only the latest
+per-handset journal survives controller restart. Do not automatically retry an
+unknown outcome or reuse an old completed ID for a new attempt.
+
+Stop additionally requires the exact 32-character lowercase hexadecimal
+`session_id` returned for the intended attempt. Keep that ID when another
+operator starts a newer session; never refresh and substitute the newer ID.
+Status uses neither a request ID nor a session ID. A Stop acknowledgement means
+that the controller accepted the request, not that microphone cleanup is
+complete. The controller allows up to 45 seconds for cleanup after the bounded
+media lease. Read status and inspect `stop_confirmed`; `recovery_required` means
+cleanup or ownership is uncertain and blocks another attempt. An existing
+controller can read another owner's newer journal but cannot signal that
+owner's child process. Do not clear its state to force a restart.
+
+Responses contain a correlated `status`/`action_id` envelope and a fixed typed
+`voice` object: schema version, physical phone, original Start line, session ID,
+state, active flag, remaining seconds, Stop flags, and a sanitized error category.
+The returned line can differ from the alias used for Status. A new dry run instead
+returns `valid`, zero `network_actions`, false `microphone_started`, and the
+bounded duration; reusing a previous Start ID can return its original session
+result. No transcript, audio, private path or backend exception is returned.
+These local adapter checks do not constitute physical microphone, display,
+call-preemption, wake-word or unattended acceptance.
+
 ## Messages and images
 
 Enter **Message title** and **Message text**, then press **Send message**. Enter a relative image filename such as `arrival.png`, or an absolute file path inside an approved folder, then press **Send image**. Relative filenames resolve inside `/config/phone-images`. Text input values are kept only in memory and reset when the integration reloads; they are not saved in the schedule store. The text input is limited to 250 characters by the HA entity state limit; the direct action allows up to 2,000 characters.
@@ -115,6 +189,8 @@ A gateway `accepted` response confirms command acknowledgement, not a completed 
 For rollback, disable pending alarms/timers first, unload/remove only this integration entry, restore only its reviewed file/card/privacy changes, and restart if component files or Recorder changed. Keep the independent Asterisk/VoIP integrations and their existing control scripts. Removing this integration does not automatically reset gateway DND or auto-answer preferences; turn them off explicitly if that is part of the rollback.
 
 ## Validation
+
+`python -m unittest discover -s tests -p 'test_phone_voice.py' -v` checks explicit voice consent, exact Stop identity, bounded typed responses and uncertain outcomes using fake clients. The pinned HA runtime also checks actual admin service dispatch, literal boolean rejection and Stop with stale AMI state.
 
 `python -m unittest discover -s tests -p 'test_phone_controls.py' -v` covers ownership, stale evidence, image path security, persistent claims, missed events and DST behavior without HA or network access. The optional pinned HA runtime additionally exercises entity platforms, config flow, actual component setup/unload, text privacy, unknown API outcomes and storage-failure suppression:
 

@@ -497,6 +497,52 @@ class PhoneRuntimeTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(response["operation_result"], "outcome_unknown")
         self.assertFalse(response["timer"]["active"])
         self.assertFalse(response["gateway_fresh"])
+        # Voice uses saved physical identity and bypasses both AMI refresh and
+        # the ordinary action lock, including when the last refresh failed.
+        from test_phone_voice import status as voice_status
+        from homeassistant.core import Context
+        from homeassistant.exceptions import Unauthorized
+        from custom_components.cisco_phone_control import vol
+        self.client.voice_status = AsyncMock(return_value={"status": "ok", "voice": voice_status()})
+        self.client.snapshot.reset_mock()
+        self.client.action.reset_mock()
+        current = self.entry.runtime_data
+        current.last_update_success = False
+        base = {"entry_id": self.entry.entry_id, "phone": "201", "line": "201"}
+        async with current._action_lock:
+            response = await asyncio.wait_for(self.hass.services.async_call(DOMAIN, "voice", {
+                **base, "operation": "status",
+            }, blocking=True, return_response=True), timeout=1)
+            self.assertEqual(response["voice"]["line"], "202")
+            self.client.action.return_value = {"status": "accepted", "action_id": "stop-service-001",
+                "voice": voice_status(state="stopping", stop_requested=True)}
+            response = await asyncio.wait_for(self.hass.services.async_call(DOMAIN, "voice", {
+                **base, "operation": "stop", "request_id": "stop-service-001", "session_id": "a" * 32,
+            }, blocking=True, return_response=True), timeout=1)
+        self.assertFalse(response["voice"]["stop_confirmed"])
+        self.client.action.assert_awaited_once_with("201", "voice_stop", {"session_id": "a" * 32}, "stop-service-001")
+        self.client.snapshot.assert_not_awaited()
+        self.client.action.reset_mock()
+        start = {**base, "operation": "start", "request_id": "start-service-001",
+                 "attended": True, "exclusive_media": True, "enable_microphone": True}
+        for flag in ("attended", "exclusive_media", "enable_microphone"):
+            for value in (1, "yes", "true"):
+                with self.assertRaises(vol.Invalid):
+                    await self.hass.services.async_call(DOMAIN, "voice", {**start, flag: value},
+                                                       blocking=True, return_response=True)
+        self.client.action.assert_not_awaited()
+        # HA's admin wrapper still gates this service before gateway I/O.
+        self.hass.auth = SimpleNamespace(async_get_user=AsyncMock(return_value=SimpleNamespace(is_admin=False)))
+        with self.assertRaises(Unauthorized):
+            await self.hass.services.async_call(DOMAIN, "voice", start, blocking=True,
+                                               return_response=True, context=Context(user_id="non-admin"))
+        self.client.action.assert_not_awaited()
+        self.client.action.return_value = {"status": "accepted", "action_id": "start-service-001", "voice": voice_status()}
+        response = await self.hass.services.async_call(DOMAIN, "voice", start, blocking=True, return_response=True)
+        self.assertEqual(response["voice"]["session_id"], "a" * 32)
+        self.client.action.assert_awaited_once_with("201", "voice_start", {
+            "attended": True, "exclusive_media": True, "enable_microphone": True}, "start-service-001")
+        self.client.snapshot.assert_not_awaited()
         self.assertTrue(await self.hass.config_entries.async_unload(self.entry.entry_id))
 
 
@@ -510,6 +556,9 @@ class GatewayClientTests(unittest.IsolatedAsyncioTestCase):
         async def handle(request):
             self.assertEqual(request.headers.get("Authorization"), "Bearer synthetic-token")
             requests.append(request.path)
+            if request.path.endswith("/voice_status"):
+                from test_phone_voice import status as voice_status
+                return web.json_response({"status": "ok", "voice": voice_status()})
             if request.method == "GET":
                 return web.json_response(snapshot())
             body = await request.json()
@@ -519,6 +568,8 @@ class GatewayClientTests(unittest.IsolatedAsyncioTestCase):
         app = web.Application()
         app.router.add_route("*", "/v1/phones", handle)
         app.router.add_route("POST", "/v1/phones/201/speaker", handle)
+        app.router.add_route("GET", "/v1/phones/202/voice_status", handle)
+        app.router.add_route("POST", "/v1/phones/202/voice_stop", handle)
         app.router.add_route("POST", "/v1/phones/201/image", too_large)
         runner = web.AppRunner(app)
         await runner.setup()
@@ -531,9 +582,13 @@ class GatewayClientTests(unittest.IsolatedAsyncioTestCase):
                 self.assertEqual((await client.snapshot())["phones"][0]["id"], "201")
                 result = await client.action("201", "speaker", {"mode": "toggle"}, "synthetic-once")
                 self.assertEqual(result["action_id"], "synthetic-once")
+                self.assertEqual((await client.voice_status("202"))["voice"]["phone"], "201")
+                voice_result = await client.action("202", "voice_stop", {"session_id": "a" * 32}, "voice-stop-once")
+                self.assertEqual(voice_result["action_id"], "voice-stop-once")
                 with self.assertRaises(GatewayError):
                     await client.action("201", "image", {}, "synthetic-too-large")
-            self.assertEqual(requests, ["/v1/phones", "/v1/phones/201/speaker"])
+            self.assertEqual(requests, ["/v1/phones", "/v1/phones/201/speaker",
+                                        "/v1/phones/202/voice_status", "/v1/phones/202/voice_stop"])
         finally:
             await runner.cleanup()
 

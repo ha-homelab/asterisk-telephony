@@ -1,6 +1,4 @@
 """Local Cisco controls and schedules; existing Asterisk/Assist setup stays intact."""
-import voluptuous as vol
-
 from homeassistant.config_entries import ConfigEntryState
 from homeassistant.core import SupportsResponse
 from homeassistant.exceptions import HomeAssistantError
@@ -9,13 +7,33 @@ from homeassistant.helpers import entity_registry as er
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
 from homeassistant.helpers.service import async_register_admin_service
 
+import voluptuous as vol
+
 from .api import GatewayClient
 from .const import DOMAIN, PLATFORMS
 from .coordinator import PhoneCoordinator
 from .scheduling_api import SCHEMA as SCHEDULE_SCHEMA, schedule
+from .voice_api import VoiceError, voice
 
 CONFIG_SCHEMA = cv.config_entry_only_config_schema(DOMAIN)
 BASE = {vol.Required("entry_id"): str, vol.Required("phone"): str, vol.Optional("title", default="Home Assistant"): vol.All(str, vol.Length(max=48))}
+
+
+def literal_boolean(value):
+    if type(value) is not bool:
+        raise vol.Invalid("Use a literal boolean for voice consent")
+    return value
+
+
+VOICE_SCHEMA = vol.Schema({
+    vol.Required("entry_id"): str, vol.Required("phone"): str,
+    vol.Required("line"): str, vol.Required("operation"): vol.In(("status", "start", "stop")),
+    vol.Optional("request_id"): str, vol.Optional("session_id"): str,
+    vol.Optional("attended"): literal_boolean,
+    vol.Optional("exclusive_media"): literal_boolean,
+    vol.Optional("enable_microphone"): literal_boolean,
+    vol.Optional("dry_run"): literal_boolean,
+})
 
 
 async def async_setup(hass, config):
@@ -48,6 +66,17 @@ async def async_setup(hass, config):
                    if key not in ("entry_id", "phone", "line", "operation")}
         return await schedule(coordinator, primary, call.data["line"], call.data["operation"], **options)
 
+    async def voice_service(call):
+        coordinator, primary = resolve(call)
+        options = {key: value for key, value in call.data.items()
+                   if key not in ("entry_id", "phone", "line", "operation")}
+        try:
+            return await voice(coordinator, primary, call.data["line"], call.data["operation"], **options)
+        except VoiceError as error:
+            raise HomeAssistantError(str(error)) from None
+
+    async_register_admin_service(hass, DOMAIN, "voice", voice_service,
+                                VOICE_SCHEMA, supports_response=SupportsResponse.ONLY)
     async_register_admin_service(hass, DOMAIN, "send_message", send,
                                 vol.Schema({**BASE, vol.Required("text"): vol.All(str, vol.Length(min=1, max=2000))}))
     async_register_admin_service(hass, DOMAIN, "send_image", send,

@@ -104,3 +104,56 @@ schedule:
       default: false
       selector:
         boolean:
+voice:
+  name: Manage attended voice session
+  description: Administrator-only manual voice status, start or exact-session stop with a response. Start permits at most 30 seconds of microphone use and requires all three explicit confirmations. Requires the gateway voice controller and reviewed runner runtime. No automatic retries or always-on listening.
+  fields:
+    entry_id:
+      name: Integration
+      required: true
+      selector:
+        config_entry:
+          integration: cisco_phone_control
+    phone:
+      name: Primary handset ID
+      required: true
+      example: "201"
+      selector:
+        text:
+    line:
+      name: Exact line
+      required: true
+      example: "202"
+      selector:
+        text:
+    operation:
+      required: true
+      selector:
+        select:
+          options: [status, start, stop]
+    request_id:
+      name: Stable request ID
+      description: Required for start and stop. Use 8 to 128 letters, digits, underscores, periods, colons or hyphens. Reuse only to identify the same deliberate attempt; replay history is bounded. Never automatically retry an unknown outcome.
+      selector:
+        text:
+    session_id:
+      name: Exact session to stop
+      description: Required only for stop. Copy the full 32-character session_id from the intended session; never substitute a newer session.
+      selector:
+        text:
+    attended:
+      description: Start only. I am physically present at the phone for this bounded session. Must be explicitly true.
+      selector:
+        boolean:
+    exclusive_media:
+      description: Start only. I reserve this phone's audio for this session. Must be explicitly true; incoming calls retain priority.
+      selector:
+        boolean:
+    enable_microphone:
+      description: Start only. I authorize microphone use for at most 30 seconds. Must be explicitly true.
+      selector:
+        boolean:
+    dry_run:
+      description: Start only. Validate the profile without starting media; all confirmations are still required. An existing request ID can return its earlier session result instead.
+      selector:
+        boolean:
