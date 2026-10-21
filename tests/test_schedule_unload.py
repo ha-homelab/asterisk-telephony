@@ -401,13 +401,53 @@ class ScheduleUnloadTests(unittest.IsolatedAsyncioTestCase):
     async def test_failed_platform_unload_leaves_coordinator_usable(self):
         from custom_components.cisco_phone_control import async_unload_entry
 
+        self.c.hands_free = SimpleNamespace(close=Mock(), async_close=AsyncMock())
         with patch.object(self.hass.config_entries, "async_unload_platforms",
                           new=AsyncMock(return_value=False)):
             self.assertFalse(await async_unload_entry(self.hass, self.entry))
         self.assertFalse(self.c._closing)
+        self.c.hands_free.close.assert_not_called()
+        self.c.hands_free.async_close.assert_not_awaited()
         result = await self.request()
         self.assertEqual(result["operation_result"], "applied")
         self.assertEqual(len(self.disk.writes), 2)
+
+    async def test_entry_unload_fences_both_owners_and_drains_through_cancellation(self):
+        from custom_components.cisco_phone_control import async_unload_entry
+
+        save_gate, poll_gate = self.gate(), self.gate()
+        self.c.store.gates[1] = save_gate
+        self.c.hands_free = SimpleNamespace(
+            close=Mock(), async_close=AsyncMock(side_effect=poll_gate.wait))
+        pending = self.spawn(self.request())
+        await self.entered(save_gate)
+        with patch.object(self.hass.config_entries, "async_unload_platforms",
+                          new=AsyncMock(return_value=True)):
+            unloading = self.spawn(async_unload_entry(self.hass, self.entry))
+            await self.checkpoint()
+            self.assertTrue(self.c._closing)
+            self.c.hands_free.close.assert_called_once()
+            self.assertFalse(poll_gate.entered.is_set())
+            for _ in range(2):
+                unloading.cancel()
+                await self.checkpoint()
+                self.assertFalse(unloading.done())
+                self.assertEqual(self.c.store.cancelled, 0)
+            save_gate.release.set()
+            await self.entered(poll_gate)
+            self.assertEqual((await self.finish(pending))["operation_result"],
+                             "outcome_unknown")
+            self.assertFalse(self.c._settings_lock.locked())
+            for _ in range(2):
+                unloading.cancel()
+                await self.checkpoint()
+                self.assertFalse(unloading.done())
+            poll_gate.release.set()
+            with self.assertRaises(asyncio.CancelledError):
+                await self.finish(unloading)
+        self.c.hands_free.async_close.assert_awaited_once()
+        self.assertEqual(self.disk.value["phones"]["201"]["schedule_requests"]
+                         ["unload-request-001"]["state"], "claimed")
 
     async def test_failed_initial_save_rolls_back_and_sends_no_external_stop(self):
         from homeassistant.exceptions import HomeAssistantError

@@ -1,4 +1,6 @@
 """Local Cisco controls and schedules; existing Asterisk/Assist setup stays intact."""
+import asyncio
+
 from homeassistant.config_entries import ConfigEntryState
 from homeassistant.core import SupportsResponse
 from homeassistant.exceptions import HomeAssistantError
@@ -13,6 +15,7 @@ from .api import GatewayClient
 from .const import DOMAIN, PLATFORMS
 from .coordinator import PhoneCoordinator
 from .scheduling_api import SCHEMA as SCHEDULE_SCHEMA, schedule
+from .storage import async_drain_task
 from .voice_api import VoiceError, voice
 from .hands_free_api import HandsFreeError, hands_free
 from .hands_free_coordinator import HandsFreeCoordinator
@@ -134,8 +137,24 @@ async def async_setup_entry(hass, entry):
 async def async_unload_entry(hass, entry):
     if not await hass.config_entries.async_unload_platforms(entry, PLATFORMS):
         return False
-    await entry.runtime_data.hands_free.async_close()
-    # Hold replacement setup until the previous coordinator's writes finish.
-    # An on-unload callback alone has a bounded wait in Home Assistant.
-    await entry.runtime_data.async_close()
+    coordinator = entry.runtime_data
+    # Fence both owners before awaiting either drain. Partial setup may have
+    # created the scheduler without attaching the optional status poller.
+    coordinator.close()
+    poller = getattr(coordinator, "hands_free", None)
+    if poller is not None:
+        poller.close()
+
+    async def drain_owners():
+        try:
+            await coordinator.async_close()
+        finally:
+            if poller is not None:
+                await poller.async_close()
+
+    # Keep replacement setup blocked through cancellation until old writes
+    # and owned reads finish. HA's on-unload callbacks alone have a time limit.
+    drain = asyncio.create_task(drain_owners(), name="cisco-entry-close")
+    if await async_drain_task(drain):
+        raise asyncio.CancelledError
     return True
