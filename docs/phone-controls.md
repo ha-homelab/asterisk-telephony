@@ -46,9 +46,11 @@ Version 0.5 adds the administrator-only `cisco_phone_control.voice` action for t
 [gateway voice controller](https://github.com/4alvit/cisco-home-telephony/blob/main/docs/voice-control.md).
 The gateway must have an explicitly enabled private registry, a reviewed runner
 runtime with its live dependencies, and persistent controller state. Installing
-this HA component alone does not enable microphone access. This first version is
-manual and attended, with at most 30 seconds of media per attempt. It adds a
-response action; the existing entity IDs and dashboard controls do not change.
+this HA component alone does not enable microphone access. Version 0.5.2b2 accepts
+compatible gateway sessions up to 300 seconds and their optional live progress
+fields. The gateway profile selects manual or wake mode and the duration; the HA
+action cannot extend that duration. Older gateway responses remain supported.
+This is a response action; the existing entity IDs and dashboard controls do not change.
 
 Supply `entry_id`, the primary physical handset ID as `phone`, an exact owned
 `line`, and `operation: status`, `start`, or `stop`. The action does not change the
@@ -67,15 +69,14 @@ call/media admission; incoming calls retain priority. Use only a deliberate
 operator action, never a recurring automation or an unattended start. An
 integration unloading will reject new Start requests.
 
-Wait for the phone's live assistant screen to show **Listening** before
-speaking the request. Preparation
-is not readiness. The `voice` action reports process lifecycle states such as
-`running`; it does not report speech stages or prove that a microphone is
-receiving audio. The runner's live screen separately shows **Listening**,
-**Thinking** and **Speaking**. Opening HA or the phone's status menu never starts
-listening. Stop ends the bounded session and never automatically starts another.
-Wake detection is available separately in the foreground pilot, not through
-the current HA/gateway session manager.
+Wait for actual readiness before speaking. A compatible gateway reports `phase`
+as `preparing`, `armed`, `listening`, `thinking`, `speaking`, `stopped`, or `error`;
+`armed` with `phase_reason: wake_ready` means the wake detector is ready. The
+process lifecycle `state: running` alone does not prove readiness or incoming audio.
+Older gateways omit these optional fields, so use their live phone screen.
+Opening HA or the phone's status menu never starts listening. Manual mode handles
+one request; a configured wake session may rearm after a successful reply within
+its original deadline. Stop ends that session and never automatically starts another.
 
 While a voice lease is held, or its cleanup is uncertain, a compatible gateway
 refuses remote dial, speaker, answer and display changes with `voice_phone_busy`.
@@ -123,7 +124,12 @@ owner's child process. Do not clear its state to force a restart.
 
 Responses contain a correlated `status`/`action_id` envelope and a fixed typed
 `voice` object: schema version, physical phone, original Start line, session ID,
-state, active flag, remaining seconds, Stop flags, and a sanitized error category.
+state, active flag, remaining seconds (0–300), Stop flags, and a sanitized error
+category. Compatible gateways may also include `phase` and fixed-code
+`phase_reason`, `turns_completed` (0–10000 successful replies), `mode` (`manual` or
+`wake`), and `session_seconds` (greater than 0, at most 300). Only phase and
+phase reason may be null; missing optional fields remain absent. Unknown phase
+reason text is reduced to null. Unknown extra fields and invalid types are refused.
 The returned line can differ from the alias used for Status. A successful dry run
 returns `valid`, zero `network_actions`, false `microphone_started`, and the
 bounded duration, even when its request ID was used by a previous Start. Dry runs

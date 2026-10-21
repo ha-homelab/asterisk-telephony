@@ -503,7 +503,9 @@ class PhoneRuntimeTests(unittest.IsolatedAsyncioTestCase):
         from homeassistant.core import Context
         from homeassistant.exceptions import Unauthorized
         from custom_components.cisco_phone_control import vol
-        self.client.voice_status = AsyncMock(return_value={"status": "ok", "voice": voice_status()})
+        progress = {"phase": "armed", "phase_reason": "wake_ready", "turns_completed": 2,
+                    "mode": "wake", "session_seconds": 300, "remaining_seconds": 240}
+        self.client.voice_status = AsyncMock(return_value={"status": "ok", "voice": voice_status(**progress)})
         self.client.snapshot.reset_mock()
         self.client.action.reset_mock()
         current = self.entry.runtime_data
@@ -514,12 +516,15 @@ class PhoneRuntimeTests(unittest.IsolatedAsyncioTestCase):
                 **base, "operation": "status",
             }, blocking=True, return_response=True), timeout=1)
             self.assertEqual(response["voice"]["line"], "202")
+            self.assertEqual(response["voice"]["phase_reason"], "wake_ready")
+            self.assertEqual(response["voice"]["remaining_seconds"], 240)
             self.client.action.return_value = {"status": "accepted", "action_id": "stop-service-001",
-                "voice": voice_status(state="stopping", stop_requested=True)}
+                "voice": voice_status(state="stopping", stop_requested=True, **progress)}
             response = await asyncio.wait_for(self.hass.services.async_call(DOMAIN, "voice", {
                 **base, "operation": "stop", "request_id": "stop-service-001", "session_id": "a" * 32,
             }, blocking=True, return_response=True), timeout=1)
         self.assertFalse(response["voice"]["stop_confirmed"])
+        self.assertEqual(response["voice"]["turns_completed"], 2)
         self.client.action.assert_awaited_once_with("201", "voice_stop", {"session_id": "a" * 32}, "stop-service-001")
         self.client.snapshot.assert_not_awaited()
         self.client.action.reset_mock()
@@ -537,9 +542,13 @@ class PhoneRuntimeTests(unittest.IsolatedAsyncioTestCase):
             await self.hass.services.async_call(DOMAIN, "voice", start, blocking=True,
                                                return_response=True, context=Context(user_id="non-admin"))
         self.client.action.assert_not_awaited()
-        self.client.action.return_value = {"status": "accepted", "action_id": "start-service-001", "voice": voice_status()}
+        self.client.action.return_value = {"status": "accepted", "action_id": "start-service-001",
+            "voice": voice_status(**{**progress, "phase": "preparing", "phase_reason": None,
+                                     "turns_completed": 0, "remaining_seconds": 300})}
         response = await self.hass.services.async_call(DOMAIN, "voice", start, blocking=True, return_response=True)
         self.assertEqual(response["voice"]["session_id"], "a" * 32)
+        self.assertEqual(response["voice"]["phase"], "preparing")
+        self.assertEqual(response["voice"]["session_seconds"], 300)
         self.client.action.assert_awaited_once_with("201", "voice_start", {
             "attended": True, "exclusive_media": True, "enable_microphone": True}, "start-service-001")
         self.client.snapshot.assert_not_awaited()
