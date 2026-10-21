@@ -45,4 +45,5 @@ jobs:
           .local/runtime-venv/bin/python -c "import sys; sys.path.insert(0, 'tests'); from test_upstream_runtime import RUNTIME_READY; assert RUNTIME_READY, 'Runtime suite must not skip in this job'"
           .local/runtime-venv/bin/python -m unittest discover -s tests -p test_upstream_runtime.py -v
           .local/runtime-venv/bin/python -m unittest discover -s tests -p test_phone_controls_runtime.py -v
+          .local/runtime-venv/bin/python -m unittest discover -s tests -p test_hands_free_runtime.py -v
           .local/runtime-venv/bin/python -m unittest discover -s tests -p 'test_schedule_*.py' -v

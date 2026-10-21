@@ -568,6 +568,10 @@ class GatewayClientTests(unittest.IsolatedAsyncioTestCase):
             if request.path.endswith("/voice_status"):
                 from test_phone_voice import status as voice_status
                 return web.json_response({"status": "ok", "voice": voice_status()})
+            if request.path.endswith("/voice_hands_free_status"):
+                from test_hands_free import status as hands_free_status
+                self.assertFalse(await request.read())
+                return web.json_response({"status": "ok", "hands_free": hands_free_status()})
             if request.method == "GET":
                 return web.json_response(snapshot())
             body = await request.json()
@@ -579,6 +583,8 @@ class GatewayClientTests(unittest.IsolatedAsyncioTestCase):
         app.router.add_route("POST", "/v1/phones/201/speaker", handle)
         app.router.add_route("GET", "/v1/phones/202/voice_status", handle)
         app.router.add_route("POST", "/v1/phones/202/voice_stop", handle)
+        app.router.add_route("GET", "/v1/phones/202/voice_hands_free_status", handle)
+        app.router.add_route("POST", "/v1/phones/202/voice_hands_free_disable", handle)
         app.router.add_route("POST", "/v1/phones/201/image", too_large)
         runner = web.AppRunner(app)
         await runner.setup()
@@ -594,10 +600,14 @@ class GatewayClientTests(unittest.IsolatedAsyncioTestCase):
                 self.assertEqual((await client.voice_status("202"))["voice"]["phone"], "201")
                 voice_result = await client.action("202", "voice_stop", {"session_id": "a" * 32}, "voice-stop-once")
                 self.assertEqual(voice_result["action_id"], "voice-stop-once")
+                self.assertEqual((await client.hands_free_status("202"))["hands_free"]["phone"], "201")
+                disabled = await client.action("202", "voice_hands_free_disable", {}, "hands-free-disable-once")
+                self.assertEqual(disabled["action_id"], "hands-free-disable-once")
                 with self.assertRaises(GatewayError):
                     await client.action("201", "image", {}, "synthetic-too-large")
             self.assertEqual(requests, ["/v1/phones", "/v1/phones/201/speaker",
-                                        "/v1/phones/202/voice_status", "/v1/phones/202/voice_stop"])
+                                        "/v1/phones/202/voice_status", "/v1/phones/202/voice_stop",
+                                        "/v1/phones/202/voice_hands_free_status", "/v1/phones/202/voice_hands_free_disable"])
         finally:
             await runner.cleanup()
 

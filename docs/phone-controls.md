@@ -40,6 +40,80 @@ Each device exposes a **Line** selector and a **Dial destination** selector cont
 
 **Gateway auto-answer** is an explicit opt-in, off by default. The gateway answers a freshly observed, isolated incoming `Ringing` channel at most once for that call. Timer and alarm alerts are excluded, and the HA **Answer** action also refuses them: answer or reject on the physical phone, or use **Stop alert**. Auto-answer is not native Cisco provisioning or a generic SIP `Alert-Info` trick. Consider who can call the handset before enabling it.
 
+## Optional persistent hands-free voice
+
+Version 0.6.0b1 adds the administrator-only `cisco_phone_control.hands_free`
+response action for a compatible SIP AudioSocket gateway. Installation and
+status polling never enable the microphone. The gateway owns the saved setting,
+finite session renewal, ordinary-call priority and recovery; HA does not run a
+renewal automation. The existing attended `voice` action is unchanged.
+
+After a configured handset returns a valid hands-free status, two read-only
+entities appear on its existing device:
+
+- **Hands-free enabled** is the saved desired setting, not evidence of listening.
+- **Voice status** shows actual progress. **Ready for wake phrase** requires the
+  supervisor and finite voice status to identify the same active session with
+  `phase: armed` and `phase_reason: wake_ready`. Running alone is not ready.
+  **Waiting for idle** does not identify a particular call or prove a call exists.
+
+Enabled may remain on while waiting, retrying or faulted. Disabled may coexist
+with Stopping while cleanup is pending. Missing, stale or invalid status becomes
+Unavailable; it never means Off or Ready. The remaining-seconds attribute applies
+to the current finite session, not the lifetime of the saved setting. Renewals
+have startup gaps and may ring the phone; capture is not uninterrupted. Software
+status does not prove audio was heard or physically stopped.
+
+Use **Developer tools → Actions** as an administrator. The following synthetic
+example explicitly enables persistent operation; use a new request key for a
+new deliberate change, and retain it if the response is uncertain:
+
+```yaml
+action: cisco_phone_control.hands_free
+data:
+  entry_id: YOUR_CONFIG_ENTRY_ID
+  phone: "201"
+  line: "201"
+  operation: enable
+  request_id: hands-free-enable-example-001
+  enable_microphone: true
+  exclusive_media: true
+response_variable: hands_free_result
+```
+
+Add `dry_run: true` to validate eligibility without changing the setting or
+starting audio. Both literal confirmations remain required. To disable, use the
+same entry/phone/line with `operation: disable` and a fresh `request_id`; omit
+both enable flags and `dry_run`. No session ID is required. Disabling prevents
+future sessions and requests cleanup of the currently owned one. For a read,
+use `operation: status` without a request ID or enable flags. A lost response is
+not permission to repeat a mutation blindly: read status first. Alias reads do
+not change the selected persistent line.
+
+These entities intentionally have no writable switch, so a generic
+`switch.turn_on` cannot bypass the action's administrator boundary. Regenerate a
+reviewed dashboard from actual registry IDs to add its read-only Voice card.
+The renderer supports a mixture of older phones without these entities and
+phones with the complete pair; existing entity IDs and other cards remain.
+
+A valid finite Stop for the current supervised session also disables its
+persistent intent. Stopping an older session does not disable a replacement;
+use `hands_free` Disable for an unambiguous phone-wide request. Enabling while
+faulted requires a new explicit request after resolving the fault. Ordinary
+calls and unknown cleanup are handled by the gateway; HA never forces a resume.
+
+HA reload only rereads gateway state and stops its own polling. It does not
+restore an On value into a new Enable call or turn the gateway off. A clean
+gateway restart may resume an already enabled setting; unresolved ownership
+requires recovery. As before, initial HA setup/restart needs a valid AMI
+inventory. Once loaded, hands-free polling and Disable use the known mapping
+independently of subsequent AMI failures. If the entry cannot load, use the
+matching gateway CLI. No native VoIP or Assist pipeline is changed.
+
+The component and gateway must both be installed before using this feature.
+Source tests cover synthetic service, status and lifecycle behavior; installing
+this component alone does not establish physical phone acceptance.
+
 ## Attended voice sessions
 
 Version 0.5 adds the administrator-only `cisco_phone_control.voice` action for the optional

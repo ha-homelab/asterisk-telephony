@@ -1,8 +1,10 @@
 {
   "domain": "cisco_phone_control",
   "name": "Cisco phone controls",
-  "version": "0.5.2b2",
-  "codeowners": ["@4alvit"],
+  "version": "0.6.0b1",
+  "codeowners": [
+    "@4alvit"
+  ],
   "config_flow": true,
   "documentation": "https://github.com/ha-homelab/asterisk-telephony/blob/main/docs/phone-controls.md",
   "issue_tracker": "https://github.com/ha-homelab/asterisk-telephony/issues",

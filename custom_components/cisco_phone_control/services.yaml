@@ -157,3 +157,48 @@ voice:
       description: Start only. Validate the profile without starting media; all confirmations are still required. The response confirms validation only; it never replays an earlier session result.
       selector:
         boolean:
+
+
+hands_free:
+  name: Manage hands-free voice
+  description: Administrator-only status, enable or disable with a response. Enable explicitly permits persistent microphone operation through separate finite SIP wake sessions. Disable prevents future sessions and requests cleanup of the owned session. No automatic HA retries.
+  fields:
+    entry_id:
+      required: true
+      description: Loaded Cisco phone controls config entry.
+      selector:
+        text:
+    phone:
+      required: true
+      description: Canonical physical handset ID in this gateway.
+      selector:
+        text:
+    line:
+      required: true
+      description: An assigned line on this physical handset. An already enabled selection is retained.
+      selector:
+        text:
+    operation:
+      required: true
+      selector:
+        select:
+          options:
+            - status
+            - enable
+            - disable
+    request_id:
+      description: Enable or disable only. Retain a unique 8–128 character request key for correlation. Do not replay an uncertain change blindly.
+      selector:
+        text:
+    enable_microphone:
+      description: Enable only. I explicitly authorize persistent microphone operation until disabled. Must be literal true.
+      selector:
+        boolean:
+    exclusive_media:
+      description: Enable only. I reserve phone audio for these sessions; ordinary calls retain priority. Must be literal true.
+      selector:
+        boolean:
+    dry_run:
+      description: Enable only. Validate eligibility without changing desired state or starting audio. Both confirmations remain required.
+      selector:
+        boolean:

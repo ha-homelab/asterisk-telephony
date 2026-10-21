@@ -38,3 +38,24 @@ class ControlsDashboardTests(unittest.TestCase):
     def test_does_not_overwrite_an_existing_handset_tab(self):
         with self.assertRaises(ValueError):
             module.render(module.entity_map(registry(), "synthetic"), {"views": [{"path": "controls-201"}]})
+
+    def test_optional_hands_free_pair_accepts_mixed_capability_and_renders_read_only_card(self):
+        records = registry()
+        old = [dict(item, unique_id=item["unique_id"].replace(":201:", ":203:"),
+                    entity_id=item["entity_id"] + "_other") for item in records
+               if item["unique_id"].rsplit(":", 1)[1] in module.REQUIRED_KEYS]
+        mapping = module.entity_map(records + old, "synthetic")
+        views = module.render(mapping)["dashboard.json"]["views"]
+        self.assertEqual(len(views[0]["cards"]), 5)
+        self.assertEqual(len(views[1]["cards"]), 4)
+        card = views[0]["cards"][-1]["cards"][0]
+        self.assertEqual(card["entities"], [{"entity": "binary_sensor.renamed_hands_free_enabled"},
+                                          {"entity": "sensor.renamed_voice_status"}])
+        self.assertFalse(card["show_header_toggle"])
+
+    def test_partial_hands_free_pair_is_rejected_without_requiring_it_on_old_gateway(self):
+        original = registry()
+        old = [record for record in original if record["unique_id"].rsplit(":", 1)[1] in module.REQUIRED_KEYS]
+        self.assertEqual(len(module.entity_map(old, "synthetic")["201"]), 29)
+        with self.assertRaises(ValueError):
+            module.entity_map(old + [record for record in original if record["unique_id"].endswith(":voice_status")], "synthetic")

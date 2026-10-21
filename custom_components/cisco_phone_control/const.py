@@ -1,6 +1,6 @@
 """Cisco handset controls, separate from the existing Asterisk integration."""
 DOMAIN = "cisco_phone_control"
-PLATFORMS = ["button", "switch", "select", "text", "time", "number", "sensor"]
+PLATFORMS = ["button", "switch", "select", "text", "time", "number", "sensor", "binary_sensor"]
 WEEKDAYS = ("Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday")
 NUMBER_LABELS = {
     "209": "Mac Telephone",
