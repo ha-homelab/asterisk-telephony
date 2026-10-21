@@ -10,6 +10,14 @@ ERRORS = frozenset(("voice_state_unavailable", "voice_owner_unavailable", "voice
                    "voice_stop_unconfirmed"))
 FIELDS = frozenset(("schema_version", "phone", "line", "session_id", "state", "active",
                    "remaining_seconds", "stop_requested", "stop_confirmed", "error"))
+OPTIONAL_FIELDS = frozenset(("phase", "phase_reason", "turns_completed", "mode", "session_seconds"))
+PHASES = frozenset(("preparing", "armed", "listening", "thinking", "speaking", "stopped", "error"))
+PHASE_REASONS = frozenset(("model_warmup", "wake_ready", "new_session", "turn_complete",
+    "user_stop", "explicit_stop", "display_stop", "shutdown", "lease_expired", "session_finished",
+    "transport_stopped", "receive_idle_timeout", "voice_session_failed", "turn_timeout", "turn_failed",
+    "audio_backpressure", "wake_inference_failed", "playback_stop_failed", "speech_start",
+    "end_of_speech", "no_speech", "utterance_limit", "audio_not_received", "turn_cancelled",
+    "duplicate_activation", "call", "start_failed", "assistant_error"))
 DRY_FIELDS = frozenset(("schema_version", "phone", "line", "valid", "network_actions",
                        "microphone_started", "duration_seconds"))
 
@@ -28,7 +36,7 @@ def identifier(value, pattern):
 
 
 def bounded_seconds(value, minimum=0):
-    return (type(value) in (int, float) and minimum <= value <= 30
+    return (type(value) in (int, float) and minimum <= value <= 300
             and math.isfinite(value))
 
 
@@ -52,7 +60,7 @@ def validate_response(result, primary, lines, operation, request_id=None, sessio
                 and value["microphone_started"] is False
                 and bounded_seconds(duration) and duration > 0)
     else:
-        require(set(value) == FIELDS)
+        require(FIELDS <= set(value) <= FIELDS | OPTIONAL_FIELDS)
         state, session = value["state"], value["session_id"]
         require(isinstance(state, str) and state in STATES
                 and all(type(value[key]) is bool for key in ("active", "stop_requested", "stop_confirmed"))
@@ -65,7 +73,21 @@ def validate_response(result, primary, lines, operation, request_id=None, sessio
             require(state != "idle")
         if operation == "stop":
             require(session == session_id)
+        if "phase" in value:
+            phase = value["phase"]
+            require(phase is None or type(phase) is str and phase in PHASES)
+        if "turns_completed" in value:
+            count = value["turns_completed"]
+            require(type(count) is int and 0 <= count <= 10000)
+        if "mode" in value:
+            require(type(value["mode"]) is str and value["mode"] in ("manual", "wake"))
+        if "session_seconds" in value:
+            duration = value["session_seconds"]
+            require(bounded_seconds(duration) and duration > 0)
     safe = {"status": result["status"], "voice": dict(value)}
+    if "phase_reason" in value:
+        reason = value["phase_reason"]
+        safe["voice"]["phase_reason"] = reason if type(reason) is str and reason in PHASE_REASONS else None
     if operation != "status":
         safe["action_id"] = request_id
     return safe

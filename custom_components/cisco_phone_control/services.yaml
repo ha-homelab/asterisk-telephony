@@ -106,7 +106,7 @@ schedule:
         boolean:
 voice:
   name: Manage attended voice session
-  description: Administrator-only manual voice status, start or exact-session stop with a response. Start permits at most 30 seconds of microphone use and requires all three explicit confirmations. Requires the gateway voice controller and reviewed runner runtime. No automatic retries or always-on listening.
+  description: Administrator-only voice status, start or exact-session stop with a response. Start uses the configured manual or wake mode for at most 300 seconds and requires all three explicit confirmations. Requires a compatible gateway voice controller and reviewed runner runtime. No automatic retries or always-on listening.
   fields:
     entry_id:
       name: Integration
@@ -150,10 +150,10 @@ voice:
       selector:
         boolean:
     enable_microphone:
-      description: Start only. I authorize microphone use for at most 30 seconds. Must be explicitly true.
+      description: Start only. I authorize microphone use for the configured session, up to 300 seconds. Must be explicitly true.
       selector:
         boolean:
     dry_run:
-      description: Start only. Validate the profile without starting media; all confirmations are still required. An existing request ID can return its earlier session result instead.
+      description: Start only. Validate the profile without starting media; all confirmations are still required. The response confirms validation only; it never replays an earlier session result.
       selector:
         boolean:
