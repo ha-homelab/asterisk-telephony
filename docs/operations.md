@@ -108,3 +108,17 @@ before installing the package anyway. When rotating the AMI secret, update the
 PBX and the HA config entry together, check reconnection, and do not publish
 either value in a diff. Backups must be encrypted and tested by restoring them
 in a separate environment.
+
+
+## Hands-free controls during HA or gateway restart
+
+The optional [hands-free action and status entities](phone-controls.md#optional-persistent-hands-free-voice)
+observe the gateway's saved setting. HA unload cancels and drains read-only
+polling without changing that setting. Do not create an HA startup automation
+that enables it again. Disable it explicitly before maintenance when automatic
+resumption after a clean gateway restart is unwanted. Wait for cleanup rather
+than equating the desired Off value with physical microphone closure.
+
+Initial HA integration setup still requires AMI inventory. A later AMI outage
+does not block the dedicated hands-free status requests or Disable action for a
+known handset; use the gateway CLI if the integration cannot load at all.

@@ -1,10 +1,52 @@
 {
   "config": {
     "step": {
-      "user": {"title": "Connect the Cisco phone gateway", "description": "Use the private, source-restricted gateway origin. The bearer token stays in Home Assistant configuration storage.", "data": {"url": "Gateway URL", "token": "Bearer token"}},
-      "reconfigure": {"title": "Update gateway credentials", "data": {"url": "Gateway URL", "token": "Bearer token"}}
+      "user": {
+        "title": "Connect the Cisco phone gateway",
+        "description": "Use the private, source-restricted gateway origin. The bearer token stays in Home Assistant configuration storage.",
+        "data": {
+          "url": "Gateway URL",
+          "token": "Bearer token"
+        }
+      },
+      "reconfigure": {
+        "title": "Update gateway credentials",
+        "data": {
+          "url": "Gateway URL",
+          "token": "Bearer token"
+        }
+      }
     },
-    "error": {"invalid_url": "Enter a valid gateway origin and token.", "invalid_auth": "The gateway rejected these credentials.", "cannot_connect": "The gateway is unavailable or has no valid, fresh AMI inventory."},
-    "abort": {"already_configured": "This gateway is already configured.", "gateway_changed": "Create a separate entry for a different gateway.", "reconfigure_successful": "Gateway credentials updated."}
+    "error": {
+      "invalid_url": "Enter a valid gateway origin and token.",
+      "invalid_auth": "The gateway rejected these credentials.",
+      "cannot_connect": "The gateway is unavailable or has no valid, fresh AMI inventory."
+    },
+    "abort": {
+      "already_configured": "This gateway is already configured.",
+      "gateway_changed": "Create a separate entry for a different gateway.",
+      "reconfigure_successful": "Gateway credentials updated."
+    }
+  },
+  "entity": {
+    "sensor": {
+      "voice_status": {
+        "name": "Voice status",
+        "state": {
+          "off": "Off",
+          "waiting_for_idle": "Waiting for idle",
+          "starting": "Starting",
+          "running_not_ready": "Running, not ready",
+          "ready": "Ready for wake phrase",
+          "listening": "Listening to request",
+          "thinking": "Thinking",
+          "speaking": "Speaking",
+          "stopping": "Stopping",
+          "retry_wait": "Waiting to retry",
+          "failed": "Failed",
+          "recovery_required": "Recovery required"
+        }
+      }
+    }
   }
 }

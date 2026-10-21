@@ -16,6 +16,9 @@ KEY_DOMAINS = {
     "alarm_time": "time", "timer_minutes": "number", "call_status": "sensor",
     "timer_remaining": "sensor", "schedule_status": "sensor",
 }
+REQUIRED_KEYS = frozenset(KEY_DOMAINS)
+HANDS_FREE_KEYS = frozenset(("hands_free_enabled", "voice_status"))
+KEY_DOMAINS.update(hands_free_enabled="binary_sensor", voice_status="sensor")
 
 
 def entity_map(registry, entry_id):
@@ -38,7 +41,9 @@ def entity_map(registry, entry_id):
         if key in phone:
             raise ValueError("Duplicate controls identity")
         phone[key] = entity_id
-    if not result or any(set(phone) != set(KEY_DOMAINS) for phone in result.values()):
+    if not result or any(not REQUIRED_KEYS <= set(phone)
+                         or set(phone) & HANDS_FREE_KEYS not in (set(), HANDS_FREE_KEYS)
+                         for phone in result.values()):
         raise ValueError("Wait until every actual controls entity is registered")
     return dict(sorted(result.items(), key=lambda item: int(item[0])))
 
@@ -68,6 +73,11 @@ def render(mapping, baseline=None):
             {"type": "vertical-stack", "cards": [card("Countdown timer and alert", ("timer_minutes", "timer_remaining", "schedule_status")), buttons(("timer_start", "timer_cancel", "alert_stop")),
                 {"type": "markdown", "content": "Timers and alarms keep ringing until you answer or reject on the phone, or press **Stop alert**. They never auto-answer or play audio. **Cancel timer** also stops its active timer alert; disabling an alarm stops its active alarm alert."}]},
         ]})
+        if HANDS_FREE_KEYS <= set(entities):
+            dashboard["views"][-1]["cards"].append({"type": "vertical-stack", "cards": [
+                card("Hands-free voice", ("hands_free_enabled", "voice_status")),
+                {"type": "markdown", "content": "Enabled is the saved preference; Voice status shows current progress. Use the administrator-only `cisco_phone_control.hands_free` action to enable or disable it. Waiting for idle does not prove a call is active. Disabling prevents future sessions; wait for cleanup before treating the phone as stopped."},
+            ]})
         privacy.extend(entities[key] for key in ("title", "message", "image_path", "timer_remaining"))
     return {"dashboard.json": dashboard, "cisco_phone_control_privacy.yaml": {"recorder": {"exclude": {"entities": privacy}}}, "entity-map.json": mapping}
 

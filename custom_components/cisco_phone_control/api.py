@@ -60,6 +60,9 @@ class GatewayClient:
     async def voice_status(self, line):
         return await self._request("GET", f"/v1/phones/{line}/voice_status")
 
+    async def hands_free_status(self, line):
+        return await self._request("GET", f"/v1/phones/{line}/voice_hands_free_status")
+
     async def action(self, primary, action, values=None, action_id=None):
         key = action_id or uuid.uuid4().hex
         body = {**(values or {}), "idempotency_key": key}

@@ -1,14 +1,48 @@
 """Status without exposing caller identities, channels or message contents."""
 import math
 
-from homeassistant.components.sensor import SensorEntity
+from homeassistant.components.sensor import SensorDeviceClass, SensorEntity
 from homeassistant.util import dt as dt_util
 
 from .entity import PhoneEntity, setup_entities
+from .hands_free_api import STATUS_OPTIONS
+from .hands_free_entity import HandsFreeEntity, setup_hands_free_entities
 
 
 async def async_setup_entry(hass, entry, async_add_entities):
     await setup_entities(entry, async_add_entities, lambda c, p: [PhoneSensor(c, p, k, n) for k, n in (("call_status", "Call status"), ("timer_remaining", "Timer remaining"), ("schedule_status", "Schedule status"))])
+    await setup_hands_free_entities(entry, async_add_entities, HandsFreeStatus)
+
+
+class HandsFreeStatus(HandsFreeEntity, SensorEntity):
+    _attr_device_class = SensorDeviceClass.ENUM
+    _attr_options = list(STATUS_OPTIONS)
+    _attr_translation_key = "voice_status"
+
+    def __init__(self, coordinator, primary):
+        super().__init__(coordinator, primary, "voice_status", "Voice status")
+
+    @property
+    def available(self):
+        return super().available and self.observation["actual"] is not None
+
+    @property
+    def native_value(self):
+        observation = self.observation
+        return observation["actual"] if observation else None
+
+    @property
+    def extra_state_attributes(self):
+        observation = self.observation
+        if observation is None:
+            return None
+        hands, voice = observation["hands_free"], observation["voice"]
+        attributes = {key: hands[key] for key in (
+            "enabled", "state", "session_seconds", "consecutive_failures", "retry_after_seconds", "error")}
+        if voice is not None:
+            attributes.update({key: voice[key] for key in (
+                "phase", "phase_reason", "remaining_seconds", "turns_completed") if key in voice})
+        return attributes
 
 
 class PhoneSensor(PhoneEntity, SensorEntity):

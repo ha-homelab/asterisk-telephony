@@ -1,4 +1,6 @@
 """Local Cisco controls and schedules; existing Asterisk/Assist setup stays intact."""
+import asyncio
+
 from homeassistant.config_entries import ConfigEntryState
 from homeassistant.core import SupportsResponse
 from homeassistant.exceptions import HomeAssistantError
@@ -13,7 +15,10 @@ from .api import GatewayClient
 from .const import DOMAIN, PLATFORMS
 from .coordinator import PhoneCoordinator
 from .scheduling_api import SCHEMA as SCHEDULE_SCHEMA, schedule
+from .storage import async_drain_task
 from .voice_api import VoiceError, voice
+from .hands_free_api import HandsFreeError, hands_free
+from .hands_free_coordinator import HandsFreeCoordinator
 
 CONFIG_SCHEMA = cv.config_entry_only_config_schema(DOMAIN)
 BASE = {vol.Required("entry_id"): str, vol.Required("phone"): str, vol.Optional("title", default="Home Assistant"): vol.All(str, vol.Length(max=48))}
@@ -30,6 +35,15 @@ VOICE_SCHEMA = vol.Schema({
     vol.Required("line"): str, vol.Required("operation"): vol.In(("status", "start", "stop")),
     vol.Optional("request_id"): str, vol.Optional("session_id"): str,
     vol.Optional("attended"): literal_boolean,
+    vol.Optional("exclusive_media"): literal_boolean,
+    vol.Optional("enable_microphone"): literal_boolean,
+    vol.Optional("dry_run"): literal_boolean,
+})
+
+HANDS_FREE_SCHEMA = vol.Schema({
+    vol.Required("entry_id"): str, vol.Required("phone"): str,
+    vol.Required("line"): str, vol.Required("operation"): vol.In(("status", "enable", "disable")),
+    vol.Optional("request_id"): str,
     vol.Optional("exclusive_media"): literal_boolean,
     vol.Optional("enable_microphone"): literal_boolean,
     vol.Optional("dry_run"): literal_boolean,
@@ -75,8 +89,22 @@ async def async_setup(hass, config):
         except VoiceError as error:
             raise HomeAssistantError(str(error)) from None
 
+    async def hands_free_service(call):
+        coordinator, primary = resolve(call)
+        options = {key: value for key, value in call.data.items()
+                   if key not in ("entry_id", "phone", "line", "operation")}
+        try:
+            result = await hands_free(coordinator, primary, call.data["line"], call.data["operation"], **options)
+        except HandsFreeError as error:
+            raise HomeAssistantError(str(error)) from None
+        if getattr(coordinator, "hands_free", None) is not None:
+            coordinator.hands_free.request_refresh()
+        return result
+
     async_register_admin_service(hass, DOMAIN, "voice", voice_service,
                                 VOICE_SCHEMA, supports_response=SupportsResponse.ONLY)
+    async_register_admin_service(hass, DOMAIN, "hands_free", hands_free_service,
+                                HANDS_FREE_SCHEMA, supports_response=SupportsResponse.ONLY)
     async_register_admin_service(hass, DOMAIN, "send_message", send,
                                 vol.Schema({**BASE, vol.Required("text"): vol.All(str, vol.Length(min=1, max=2000))}))
     async_register_admin_service(hass, DOMAIN, "send_image", send,
@@ -90,6 +118,9 @@ async def async_setup_entry(hass, entry):
     coordinator = PhoneCoordinator(hass, entry, GatewayClient(async_get_clientsession(hass), entry.data["url"], entry.data["token"]))
     await coordinator.async_initialize()
     entry.runtime_data = coordinator
+    coordinator.hands_free = HandsFreeCoordinator(coordinator)
+    entry.async_on_unload(coordinator.hands_free.close)
+    await coordinator.hands_free.async_start()
     # Remove only this entry's obsolete sound selectors, preserving all other
     # registry records and identities. Legacy stored settings remain readable.
     registry = er.async_get(hass)
@@ -106,7 +137,24 @@ async def async_setup_entry(hass, entry):
 async def async_unload_entry(hass, entry):
     if not await hass.config_entries.async_unload_platforms(entry, PLATFORMS):
         return False
-    # Hold replacement setup until the previous coordinator's writes finish.
-    # An on-unload callback alone has a bounded wait in Home Assistant.
-    await entry.runtime_data.async_close()
+    coordinator = entry.runtime_data
+    # Fence both owners before awaiting either drain. Partial setup may have
+    # created the scheduler without attaching the optional status poller.
+    coordinator.close()
+    poller = getattr(coordinator, "hands_free", None)
+    if poller is not None:
+        poller.close()
+
+    async def drain_owners():
+        try:
+            await coordinator.async_close()
+        finally:
+            if poller is not None:
+                await poller.async_close()
+
+    # Keep replacement setup blocked through cancellation until old writes
+    # and owned reads finish. HA's on-unload callbacks alone have a time limit.
+    drain = asyncio.create_task(drain_owners(), name="cisco-entry-close")
+    if await async_drain_task(drain):
+        raise asyncio.CancelledError
     return True
