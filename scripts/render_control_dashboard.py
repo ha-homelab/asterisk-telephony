@@ -19,6 +19,7 @@ KEY_DOMAINS = {
 REQUIRED_KEYS = frozenset(KEY_DOMAINS)
 HANDS_FREE_KEYS = frozenset(("hands_free_enabled", "voice_status"))
 KEY_DOMAINS.update(hands_free_enabled="binary_sensor", voice_status="sensor")
+KEY_DOMAINS["media_player"] = "media_player"
 
 
 def entity_map(registry, entry_id):
@@ -73,6 +74,11 @@ def render(mapping, baseline=None):
             {"type": "vertical-stack", "cards": [card("Countdown timer and alert", ("timer_minutes", "timer_remaining", "schedule_status")), buttons(("timer_start", "timer_cancel", "alert_stop")),
                 {"type": "markdown", "content": "Timers and alarms keep ringing until you answer or reject on the phone, or press **Stop alert**. They never auto-answer or play audio. **Cancel timer** also stops its active timer alert; disabling an alarm stops its active alarm alert."}]},
         ]})
+        if "media_player" in entities:
+            dashboard["views"][-1]["cards"].append({"type": "vertical-stack", "cards": [
+                {"type": "media-control", "entity": entities["media_player"], "name": "Radio"},
+                {"type": "markdown", "content": "Choose an advertised station in the player's source list or media browser. The Line selector chooses where playback starts. Stop affects only the observed radio call; stop it before choosing another station. A normal call is not music playback."},
+            ]})
         if HANDS_FREE_KEYS <= set(entities):
             dashboard["views"][-1]["cards"].append({"type": "vertical-stack", "cards": [
                 card("Hands-free voice", ("hands_free_enabled", "voice_status")),

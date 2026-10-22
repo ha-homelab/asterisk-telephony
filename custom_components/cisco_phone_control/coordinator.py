@@ -12,7 +12,7 @@ from homeassistant.util import dt as dt_util
 
 from .api import GatewayError
 from .const import DOMAIN
-from .model import owned_channel, read_image
+from .model import MEDIA_IDENTITY, media_observation, owned_channel, radio_sources, read_image, supports_media
 from .schedule import defaults, pending, start_timer, validate_settings
 from .storage import ScheduleStore, async_drain_task
 
@@ -204,7 +204,33 @@ class PhoneCoordinator(DataUpdateCoordinator):
                 line = values.get("line", self.settings[primary]["line"])
                 if action != "alert_stop" and line not in phone["lines"]:
                     raise HomeAssistantError("Selected line does not belong to this handset")
-                if action == "alert_stop":
+                if action in ("media_play", "media_stop"):
+                    sources = radio_sources(fresh)
+                    media = media_observation(phone, sources)
+                    if not supports_media(phone) or media is None:
+                        raise HomeAssistantError("Upgrade the gateway to support phone media")
+                    if not phone["online"]:
+                        raise HomeAssistantError("The phone is offline")
+                    if action == "media_play":
+                        source = values.get("source")
+                        if not isinstance(source, str) or source not in sources:
+                            raise HomeAssistantError("Choose an advertised radio station")
+                        if media["state"] in ("playing", "buffering"):
+                            raise HomeAssistantError("Stop the current radio session before selecting a station")
+                        # The gateway may hand off its own supervised voice leg.
+                        # No other busy or uncertain state is a music target.
+                        if media["state"] != "idle" and not (
+                                media["state"] == "blocked" and media["reason"] == "voice"):
+                            raise HomeAssistantError("The phone is busy or its media state is uncertain")
+                        values = {"source": source, "line": line}
+                    else:
+                        # Retain the caller's observed identity. Never substitute
+                        # a newer radio call, including one on the sibling line.
+                        if (set(values) != set(MEDIA_IDENTITY)
+                                or media["state"] not in ("playing", "buffering")
+                                or any(values[key] != media[key] for key in MEDIA_IDENTITY)):
+                            raise HomeAssistantError("The radio session changed; no call was stopped")
+                elif action == "alert_stop":
                     if "alert" not in phone:
                         raise HomeAssistantError("Upgrade the gateway to support persistent alerts")
                     alert = phone["alert"]

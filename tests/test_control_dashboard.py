@@ -29,7 +29,7 @@ class ControlsDashboardTests(unittest.TestCase):
     def test_incomplete_disabled_foreign_and_duplicate_identity_fail_closed(self):
         for case in ("missing", "disabled", "foreign", "duplicate"):
             records = registry()
-            if case == "missing": records.pop()
+            if case == "missing": records = [r for r in records if not r["unique_id"].endswith(":dial")]
             elif case == "disabled": records[0]["disabled_by"] = "user"
             elif case == "foreign": records[0]["platform"] = "unrelated"
             else: records.append(copy.deepcopy(records[0]))
@@ -46,12 +46,24 @@ class ControlsDashboardTests(unittest.TestCase):
                if item["unique_id"].rsplit(":", 1)[1] in module.REQUIRED_KEYS]
         mapping = module.entity_map(records + old, "synthetic")
         views = module.render(mapping)["dashboard.json"]["views"]
-        self.assertEqual(len(views[0]["cards"]), 5)
+        self.assertEqual(len(views[0]["cards"]), 6)
         self.assertEqual(len(views[1]["cards"]), 4)
         card = views[0]["cards"][-1]["cards"][0]
         self.assertEqual(card["entities"], [{"entity": "binary_sensor.renamed_hands_free_enabled"},
                                           {"entity": "sensor.renamed_voice_status"}])
         self.assertFalse(card["show_header_toggle"])
+
+    def test_media_card_uses_actual_id_and_is_optional_for_older_inventory(self):
+        records = registry()
+        mapped = module.entity_map(records, "synthetic")
+        view = module.render(mapped)["dashboard.json"]["views"][0]
+        players = [child for card in view["cards"] for child in card.get("cards", [])
+                   if child.get("type") == "media-control"]
+        self.assertEqual(players, [{"type": "media-control", "entity": "media_player.renamed_media_player", "name": "Radio"}])
+        old = [record for record in records if not record["unique_id"].endswith(":media_player")]
+        old_view = module.render(module.entity_map(old, "synthetic"))["dashboard.json"]["views"][0]
+        self.assertFalse(any(child.get("type") == "media-control"
+                             for card in old_view["cards"] for child in card.get("cards", [])))
 
     def test_partial_hands_free_pair_is_rejected_without_requiring_it_on_old_gateway(self):
         original = registry()

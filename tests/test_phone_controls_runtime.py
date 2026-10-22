@@ -459,13 +459,16 @@ class PhoneRuntimeTests(unittest.IsolatedAsyncioTestCase):
         device_registry.async_setup(self.hass)
         for registry in (floor_registry, label_registry, area_registry, device_registry, entity_registry, issue_registry):
             await registry.async_load(self.hass, load_empty=True)
+        from homeassistant.auth import auth_manager_from_config
+        self.hass.auth = await auth_manager_from_config(self.hass, [], [])
         self.hass.config_entries._entries[self.entry.entry_id] = self.entry
         registry = entity_registry.async_get(self.hass)
         obsolete = [registry.async_get_or_create("select", DOMAIN, f"{self.entry.entry_id}:201:{key}", config_entry=self.entry).entity_id
                     for key in ("alarm_destination", "timer_destination")]
         unrelated = registry.async_get_or_create("select", "unrelated", "keep-this-selector").entity_id
         unrelated_owned_key = registry.async_get_or_create("select", DOMAIN, f"{self.entry.entry_id}:999:alarm_destination", config_entry=self.entry).entity_id
-        with patch("custom_components.cisco_phone_control.GatewayClient", return_value=self.client), patch("custom_components.cisco_phone_control.async_get_clientsession", return_value=None):
+        # media_player needs the real HTTP component, but no socket in this fixture.
+        with patch("homeassistant.components.http.HomeAssistantHTTP.async_bind", new_callable=AsyncMock), patch("custom_components.cisco_phone_control.GatewayClient", return_value=self.client), patch("custom_components.cisco_phone_control.async_get_clientsession", return_value=None):
             self.assertTrue(await async_setup_component(self.hass, DOMAIN, {}))
             from homeassistant.config_entries import ConfigEntryState
             self.assertEqual(self.entry.state, ConfigEntryState.LOADED)

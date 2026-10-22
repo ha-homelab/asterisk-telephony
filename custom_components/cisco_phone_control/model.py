@@ -7,6 +7,74 @@ from urllib.parse import urlsplit
 
 MAX_IMAGE = 2 * 1024 * 1024
 NUMBER = re.compile(r"[0-9]{1,12}\Z")
+MEDIA_REASONS = frozenset({"offline", "dnd", "alert", "call", "voice", "unavailable", "ambiguous", "unmarked"})
+MEDIA_IDENTITY = ("source", "line", "channel", "uniqueid")
+
+
+def supports_media(phone):
+    capabilities = phone.get("capabilities")
+    return isinstance(capabilities, list) and "media" in capabilities
+
+
+def radio_sources(value):
+    """Return only unambiguous, advertised radio destinations with safe labels."""
+    services = value.get("services", [])
+    allowed = value.get("dial_allowlist", [])
+    if not isinstance(services, list) or not isinstance(allowed, list):
+        return {}
+    local = {line for phone in value.get("phones", []) if isinstance(phone, dict)
+             for line in phone.get("lines", []) if isinstance(line, str)}
+    clients = value.get("softphones", [])
+    clients = clients if isinstance(clients, list) else []
+    local.update(client.get("extension") for client in clients
+                 if isinstance(client, dict) and isinstance(client.get("extension"), str))
+    sources, duplicates = {}, set()
+    for item in services:
+        if not isinstance(item, dict) or item.get("kind") != "radio":
+            continue
+        number, label = item.get("number"), item.get("label")
+        if (not isinstance(number, str) or not NUMBER.fullmatch(number)
+                or number not in allowed or number in local
+                or not isinstance(label, str) or label != label.strip()
+                or not re.fullmatch(r"[A-Za-z0-9][ -~]{0,79}", label)):
+            continue
+        if number in sources:
+            duplicates.add(number)
+        sources[number] = label
+    return {number: label for number, label in sources.items() if number not in duplicates}
+
+
+def media_observation(phone, sources):
+    """Validate optional media evidence without upgrading a legacy gateway."""
+    if "media" not in phone:
+        return None
+    media = phone["media"]
+    if (not isinstance(media, dict)
+            or set(media) != {"state", "reason", *MEDIA_IDENTITY}
+            or media.get("state") not in ("idle", "buffering", "playing", "blocked", "unknown")):
+        raise ValueError("Invalid media observation")
+    state = media["state"]
+    if state in ("idle", "blocked", "unknown"):
+        if any(media[key] is not None for key in MEDIA_IDENTITY):
+            raise ValueError("Inactive media cannot claim a call identity")
+        if ((state == "idle" and media["reason"] is not None)
+                or (state != "idle" and (not isinstance(media["reason"], str)
+                                        or media["reason"] not in MEDIA_REASONS))):
+            raise ValueError("Invalid media reason")
+    else:
+        if (media["reason"] is not None or not isinstance(media["source"], str)
+                or media["source"] not in sources or media["line"] not in phone["lines"]
+                or not isinstance(media["channel"], str)
+                or not isinstance(media["uniqueid"], str)):
+            raise ValueError("Invalid active radio identity")
+        matches = [channel for channel in phone["channels"]
+                   if (channel["line"], channel["name"], channel["uniqueid"])
+                   == (media["line"], media["channel"], media["uniqueid"])]
+        if len(matches) != 1 or len(phone["channels"]) != 1:
+            raise ValueError("Radio identity does not match one isolated handset call")
+        if state == "playing" and matches[0]["state"] != "Up":
+            raise ValueError("Playing radio call is not connected")
+    return media
 
 
 def gateway_url(value):
@@ -74,6 +142,9 @@ def inventory(value):
                 or any(not isinstance(n, str) or not NUMBER.fullmatch(n) for n in allowed)
                 or len(set(allowed)) != len(allowed)):
             raise ValueError("Invalid destination list")
+    sources = radio_sources(value)
+    for phone in phones:
+        media_observation(phone, sources)
     return value
 
 
