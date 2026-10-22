@@ -1,11 +1,12 @@
 # Radio playback on a Cisco phone
 
-The media-player candidate extends **Cisco phone controls** (`cisco_phone_control`)
+The media player in **Cisco phone controls 0.7.0b1** extends **Cisco phone controls** (`cisco_phone_control`)
 on each existing handset device. It belongs to this
 [Terraform-managed repository](../README.md#repository-management); it does not
-require another repository or a second phone integration. **Deployment and
-physical playback acceptance are pending.** The behavior below describes the
-candidate, not a claim that it is installed in your Home Assistant instance.
+require another repository or a second phone integration. Use the matching
+[Beta 18 gateway](https://github.com/4alvit/cisco-home-telephony/releases/tag/v0.1.0-beta.18)
+and generated PBX radio configuration. Installing the component alone does not
+prove audio delivery; complete the state and playback checks below.
 
 ![Radio selection, observed playback and exact-call Stop](diagrams/phone-media-player.svg)
 
@@ -37,16 +38,17 @@ entry and entity registry. Install a compatible gateway that advertises the
 `media` capability, exposes `phone.media` in its inventory, and provides the
 catalog and guarded radio controls. Updating only the HA component against an
 older gateway leaves the player unavailable; it cannot establish radio state.
-This is a separate candidate capability, not a claim about the existing Beta17
-gateway release. Keep component backups outside `custom_components`, as
+This requires the Beta 18 gateway contract; Beta 17 does not provide it. Keep component backups outside `custom_components`, as
 described in the [installation guide](installation.md).
 
 The matching gateway also requires a regenerated and activated **PBX radio
 dialplan**. Its `CISCO_RADIO` marker binds each radio call to its station and
-channel unique ID. Updating the gateway without activating that dialplan is
-insufficient: an unmarked radio call remains **Unknown**, and missing capability
-or missing fresh inventory leaves the player **Unavailable**. Neither condition
-authorizes radio Stop or a claim of Playing.
+channel unique ID. The gateway checks
+`DIALPLAN_EXISTS(home,<source>,cisco-radio-v1)` before voice handoff and again
+before phone commands; without loaded route support, inactive players are
+**Unavailable** and new Play requests are refused. After a dialplan rollback,
+an already started radio call that still has a valid marker and verified
+identity retains its observed **Buffering/Playing** state and exact-call **Stop**.
 
 Regenerate the PBX configuration with the matching provisioning version, then
 activate it using the deployment's configuration update procedure. Reload the
@@ -60,7 +62,7 @@ media player.
 After the coordinated update and HA restart, find the media player on each
 existing phone device. Check an online and an offline handset. Keep the existing
 Asterisk integration, native Assist pipelines and private gateway credentials.
-This candidate adds no pause, seek, volume or current-song metadata controls.
+This version adds no pause, seek, volume or current-song metadata controls.
 The displayed title identifies the station, not the track being broadcast.
 
 To add the optional **Radio** media-control card, regenerate and review the
@@ -154,7 +156,7 @@ handset test does not establish playback on every configured phone.
   [Media source](https://www.home-assistant.io/integrations/media_source/) exposes
   media but does not transcode it. Adding a media-player entity alone supplies
   none of those transport functions.
-- **Music Assistant — not supported by this candidate.** Its
+- **Music Assistant — not supported by this version.** Its
   [Home Assistant player provider](https://www.music-assistant.io/player-support/home-assistant/)
   expects compatible media playback and streaming behavior. Supporting a numeric
   radio service through `play_media` does not establish support for its streams,
@@ -163,7 +165,7 @@ handset test does not establish playback on every configured phone.
   [internal multimedia URIs](https://www.cisco.com/c/en/us/td/docs/voice_ip_comm/cuipph/all_models/xsi/7_0/english/programming/guide/70xsi/xsi70uri.html)
   for these phones. `Play:` reads a constrained raw ring file from TFTP; it is
   not an MP3 URL player. RTP reception would require its own media conversion,
-  call-priority handling and cleanup qualification. This candidate uses PBX
+  call-priority handling and cleanup qualification. This version uses PBX
   radio calls instead.
 - **DLNA — requires a renderer.** HA's
   [DLNA DMR integration](https://www.home-assistant.io/integrations/dlna_dmr/)
