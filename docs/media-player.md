@@ -1,7 +1,7 @@
 # Radio playback on a Cisco phone
 
-The media player in **Cisco phone controls 0.7.0b1** extends **Cisco phone controls** (`cisco_phone_control`)
-on each existing handset device. It belongs to this
+**Cisco phone controls 0.7.0b1** (`cisco_phone_control`) adds a media player
+to each existing handset device. It belongs to this
 [Terraform-managed repository](../README.md#repository-management); it does not
 require another repository or a second phone integration. Use the matching
 [Beta 18 gateway](https://github.com/4alvit/cisco-home-telephony/releases/tag/v0.1.0-beta.18)
