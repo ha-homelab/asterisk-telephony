@@ -151,8 +151,11 @@ class HandsFreeRuntimeTests(unittest.IsolatedAsyncioTestCase):
         device_registry.async_setup(self.hass)
         for registry in (floor_registry, label_registry, area_registry, device_registry, entity_registry, issue_registry):
             await registry.async_load(self.hass, load_empty=True)
+        from homeassistant.auth import auth_manager_from_config
+        self.hass.auth = await auth_manager_from_config(self.hass, [], [])
         self.hass.config_entries._entries[self.entry.entry_id] = self.entry
-        with patch("custom_components.cisco_phone_control.GatewayClient", return_value=self.client), patch("custom_components.cisco_phone_control.async_get_clientsession", return_value=None):
+        # media_player needs the real HTTP component, but no socket in this fixture.
+        with patch("homeassistant.components.http.HomeAssistantHTTP.async_bind", new_callable=AsyncMock), patch("custom_components.cisco_phone_control.GatewayClient", return_value=self.client), patch("custom_components.cisco_phone_control.async_get_clientsession", return_value=None):
             self.assertTrue(await async_setup_component(self.hass, "cisco_phone_control", {}))
         await self.hass.async_block_till_done()
 

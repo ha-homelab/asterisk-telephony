@@ -8,8 +8,8 @@ This project uses the existing
 version **1.0.5**. It adds a verifiable installer, a local configuration
 generator, examples, documentation, and SVG diagrams. Upstream source code
 is not redistributed here. The included **Cisco Phone Control** integration
-adds a separate configuration flow and 29 entities per physical phone through
-the authenticated local [phone gateway](https://github.com/4alvit/cisco-home-telephony/blob/main/docs/phone-gateway.md).
+groups call controls, schedules, an optional voice assistant, and a radio media
+player on each physical handset device through the authenticated local [phone gateway](https://github.com/4alvit/cisco-home-telephony/blob/main/docs/phone-gateway.md).
 See [installation and handset controls](docs/phone-controls.md).
 
 ![Architecture](docs/diagrams/architecture.svg)
@@ -32,14 +32,14 @@ Repository checks run locally and in GitHub Actions on `ubuntu-24.04`, without
 secrets, calls, or deployment. On October 17, 2026, the Asterisk and VoIP
 integrations were connected to a running HA 2026.10.0 instance; the real AMI
 connection was verified and a telephony dashboard was created. Four physical
-Cisco 7945G phones now run SIP with two independent lines each: **201/202**,
+Cisco 7945G phones then ran SIP with two independent lines each: **201/202**,
 **203/204**, **205/206**, and **207/208**. The original single-phone pilot
 expanded to all four handsets; the deployment record distinguishes each
 completed test from features still awaiting live acceptance.
 [Server deployment record](https://github.com/4alvit/cisco-home-telephony/blob/main/docs/server-validation.md).
 The operator confirmed Russian spoken Assist replies, and the generated
 HA Originate/Hangup scripts passed live tests. All four native VoIP phone
-identities now select the existing Silero Baya Russian voice pipeline;
+identities selected the existing Silero Baya Russian voice pipeline;
 other voice devices and global pipeline definitions remain unchanged.
 [Acceptance checklist](docs/acceptance.md).
 [Completed test results](docs/runtime-verification.md) link to successful
@@ -80,6 +80,7 @@ second line's status and Hangup control; see [two lines on one handset](docs/con
 ## Documentation
 
 - [Cisco Phone Control: calls, alarms, timers, text and pictures](docs/phone-controls.md)
+- [Phone media player: curated radio, playback state and exact-call Stop](docs/media-player.md)
 - [Dial 641 to toggle a saved alarm](docs/dialled-alarm.md)
 - [Installation with SHA-256 verification and rollback](docs/installation.md)
 - [HACS without a second installer](docs/hacs.md)
