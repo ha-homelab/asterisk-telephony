@@ -21,7 +21,9 @@ from .hands_free_api import HandsFreeError, hands_free
 from .hands_free_coordinator import HandsFreeCoordinator
 
 CONFIG_SCHEMA = cv.config_entry_only_config_schema(DOMAIN)
-BASE = {vol.Required("entry_id"): str, vol.Required("phone"): str, vol.Optional("title", default="Home Assistant"): vol.All(str, vol.Length(max=48))}
+# Field contents are validated together by the coordinator before any network
+# request, so button and service callers receive the same actionable errors.
+BASE = {vol.Required("entry_id"): str, vol.Required("phone"): str, vol.Optional("title", default="Home Assistant"): str}
 
 
 def literal_boolean(value):
@@ -106,7 +108,7 @@ async def async_setup(hass, config):
     async_register_admin_service(hass, DOMAIN, "hands_free", hands_free_service,
                                 HANDS_FREE_SCHEMA, supports_response=SupportsResponse.ONLY)
     async_register_admin_service(hass, DOMAIN, "send_message", send,
-                                vol.Schema({**BASE, vol.Required("text"): vol.All(str, vol.Length(min=1, max=2000))}))
+                                vol.Schema({**BASE, vol.Required("text"): str}))
     async_register_admin_service(hass, DOMAIN, "send_image", send,
                                 vol.Schema({**BASE, vol.Required("path"): vol.All(str, vol.Length(min=1, max=250))}))
     async_register_admin_service(hass, DOMAIN, "schedule", schedule_service,

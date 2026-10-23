@@ -289,8 +289,29 @@ class PhoneRuntimeTests(unittest.IsolatedAsyncioTestCase):
         self.hass.data[DATA_INSTANCE] = SimpleNamespace(entity_filter=lambda entity_id: False)
         await field.async_set_value("private sample")
         self.assertEqual(field.native_value, "private sample")
+        await field.async_set_value("")
+        self.assertEqual(field.native_value, "")
         self.c.store.async_save.assert_not_awaited()
         del self.hass.data[DATA_INSTANCE]
+
+    async def test_message_button_validates_before_any_gateway_request(self):
+        from custom_components.cisco_phone_control.button import PhoneButton
+        from homeassistant.exceptions import HomeAssistantError
+        button = PhoneButton(self.c, "201", "send_message", "Send message")
+        for title, message, expected in (("Home Assistant", "", "Enter Message text"),
+                                         ("", "hello", "Enter Message title"),
+                                         ("Title", "private\rtext", "unsupported control")):
+            self.c.inputs["201"].update(title=title, message=message)
+            with self.assertRaisesRegex(HomeAssistantError, expected):
+                await button.async_press()
+        self.client.snapshot.assert_not_awaited()
+        self.client.action.assert_not_awaited()
+        message = "Привет\n\t<&>" + "a" * 239
+        self.c.inputs["201"].update(title="Door", message=message)
+        await button.async_press()
+        self.client.action.assert_awaited_once_with("201", "message", {"title": "Door", "text": message}, None)
+        self.assertEqual(self.c.inputs["201"]["message"], message)
+        self.c.store.async_save.assert_not_awaited()
 
     async def test_scheduler_persists_claim_before_call_and_never_retries(self):
         from custom_components.cisco_phone_control.api import GatewayError
@@ -478,6 +499,23 @@ class PhoneRuntimeTests(unittest.IsolatedAsyncioTestCase):
         self.assertIsNotNone(registry.async_get(unrelated_owned_key))
         owned = [s for s in self.hass.states.async_all() if s.entity_id.startswith(("button.cisco_201", "switch.cisco_201", "select.cisco_201", "text.cisco_201", "time.cisco_201", "number.cisco_201", "sensor.cisco_201"))]
         self.assertEqual(len(owned), 29)
+        # Real HA service calls share button validation before any gateway I/O.
+        from homeassistant.exceptions import HomeAssistantError
+        self.client.snapshot.reset_mock()
+        self.client.action.reset_mock()
+        for title, message, expected in (("Home Assistant", "", "Enter Message text"),
+                                         ("", "hello", "Enter Message title"),
+                                         ("Title", "private\x00text", "unsupported control")):
+            with self.assertRaisesRegex(HomeAssistantError, expected):
+                await self.hass.services.async_call(DOMAIN, "send_message", {
+                    "entry_id": self.entry.entry_id, "phone": "201",
+                    "title": title, "text": message}, blocking=True)
+        self.client.snapshot.assert_not_awaited()
+        self.client.action.assert_not_awaited()
+        await self.hass.services.async_call(DOMAIN, "send_message", {
+            "entry_id": self.entry.entry_id, "phone": "201", "text": "A" * 2000}, blocking=True)
+        self.client.action.assert_awaited_once_with("201", "message", {"title": "Home Assistant", "text": "A" * 2000}, None)
+        self.client.action.reset_mock()
         # Exercise actual HA service dispatch and response handling, not only the coordinator.
         response = await self.hass.services.async_call(DOMAIN, "schedule", {
             "entry_id": self.entry.entry_id, "phone": "201", "line": "202",
@@ -560,6 +598,55 @@ class PhoneRuntimeTests(unittest.IsolatedAsyncioTestCase):
 
 @unittest.skipUnless(READY, "requires optional pinned Home Assistant runtime")
 class GatewayClientTests(unittest.IsolatedAsyncioTestCase):
+    async def test_http_refusal_reasons_are_static_bounded_and_never_retried(self):
+        import aiohttp
+        from aiohttp import web
+        from custom_components.cisco_phone_control.api import GatewayClient, GatewayError
+        response = {"status": 400, "body": b""}
+        calls = []
+        async def handle(request):
+            calls.append(await request.json())
+            return web.Response(status=response["status"], body=response["body"])
+        app = web.Application()
+        app.router.add_post("/v1/phones/201/message", handle)
+        runner = web.AppRunner(app)
+        await runner.setup()
+        site = web.TCPSite(runner, "127.0.0.1", 0)
+        await site.start()
+        port = site._server.sockets[0].getsockname()[1]
+        secret = "private-content-must-not-appear"
+        def body(reason, status="refused"):
+            return json.dumps({"status": status, "reason": reason, "private": secret}).encode()
+        cases = [
+            (400, body("bad_text"), "both must be nonempty"),
+            (409, body("phone_busy"), "active call on one of its lines"),
+            (409, body("voice_phone_busy"), "voice assistant owns the phone"),
+            (429, body("too_many_pending_messages"), "too many pending messages"),
+            (413, body(secret), "Gateway refused;"),
+            (409, body("phone_busy", "unknown"), "Gateway refused;"),
+            (400, b"not JSON " + secret.encode(), "Gateway refused;"),
+            (400, b"[" * 1500 + b"]" * 1500, "Gateway refused;"),
+            (409, body(["phone_busy", secret]), "Gateway refused;"),
+            (400, body("phone_busy") + b" " * 4096, "Gateway refused;"),
+            (502, body("phone_busy"), "Gateway outcome unknown;"),
+            (401, body("phone_busy"), "Gateway authentication rejected;"),
+        ]
+        try:
+            async with aiohttp.ClientSession() as session:
+                client = GatewayClient(session, f"http://127.0.0.1:{port}", "synthetic-token")
+                for index, (status, raw, expected) in enumerate(cases):
+                    response.update(status=status, body=raw)
+                    key = f"one-attempt-{index}"
+                    with self.subTest(status=status, case=index), self.assertRaises(GatewayError) as caught:
+                        await client.action("201", "message", {"title": "Title", "text": "Hello"}, key)
+                    self.assertIn(expected, str(caught.exception))
+                    self.assertIn(key, str(caught.exception))
+                    self.assertIn("do not retry blindly", str(caught.exception))
+                    self.assertNotIn(secret, str(caught.exception))
+                    self.assertEqual(len(calls), index + 1)
+        finally:
+            await runner.cleanup()
+
     async def test_real_http_client_success_and_bounded_response(self):
         import aiohttp
         from aiohttp import web

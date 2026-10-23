@@ -27,6 +27,28 @@ def snapshot():
          "autoanswer": False, "dnd_pending": False, "channels": [], "alert": None}]}
 
 
+class NotificationTextTests(unittest.TestCase):
+    def test_gateway_boundaries_and_content_are_preserved(self):
+        for value in ("a" * 2000, "Привет, Мышка\n\t<&>", "   ", "\x7f"):
+            self.assertEqual(model.notification_text(value), value)
+        self.assertEqual(model.notification_text("a" * 48, title=True), "a" * 48)
+        for value, title in (("a" * 2001, False), ("a" * 49, True)):
+            with self.assertRaisesRegex(ValueError, "at most"):
+                model.notification_text(value, title=title)
+
+    def test_empty_and_control_characters_have_static_field_errors(self):
+        for value in (None, ""):
+            with self.assertRaisesRegex(ValueError, "Enter Message text.*cleared"):
+                model.notification_text(value)
+            with self.assertRaisesRegex(ValueError, "Enter Message title"):
+                model.notification_text(value, title=True)
+        for value in ("private\rcontent", "private\x00content", "private\x1fcontent"):
+            for title in (True, False):
+                with self.assertRaisesRegex(ValueError, "unsupported control") as caught:
+                    model.notification_text(value, title=title)
+                self.assertNotIn("private", str(caught.exception))
+
+
 class InventoryTests(unittest.TestCase):
     def test_alert_requires_exact_identity_kind_line_and_known_state(self):
         value = snapshot()

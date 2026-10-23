@@ -11,6 +11,20 @@ MEDIA_REASONS = frozenset({"offline", "dnd", "alert", "call", "voice", "unavaila
 MEDIA_IDENTITY = ("source", "line", "channel", "uniqueid")
 
 
+def notification_text(value, *, title=False):
+    """Match the gateway's text contract without changing private content."""
+    field, limit = ("Message title", 48) if title else ("Message text", 2000)
+    if not isinstance(value, str) or not value:
+        detail = (" Message fields are cleared when Home Assistant restarts or "
+                  "the integration reloads." if not title else "")
+        raise ValueError(f"Enter {field} and apply the edit before sending.{detail}")
+    if len(value) > limit:
+        raise ValueError(f"{field} must contain at most {limit} characters")
+    if any(ord(char) < 32 and char not in "\n\t" for char in value):
+        raise ValueError(f"{field} contains unsupported control characters; only newline and tab are allowed")
+    return value
+
+
 def supports_media(phone):
     capabilities = phone.get("capabilities")
     return isinstance(capabilities, list) and "media" in capabilities

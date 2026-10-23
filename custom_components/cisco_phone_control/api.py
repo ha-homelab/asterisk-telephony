@@ -7,13 +7,39 @@ import aiohttp
 
 from .model import gateway_url, inventory
 
+REFUSAL_DETAILS = {
+    "bad_text": "Check Message title and Message text: both must be nonempty and contain no unsupported control characters",
+    "phone_busy": "The phone has an active call on one of its lines; finish the call before sending",
+    "voice_phone_busy": "The voice assistant owns the phone or requires recovery; check its status before sending",
+    "too_many_pending_messages": "The gateway has too many pending messages; wait for them to expire before sending another",
+}
+
+
+async def refusal_detail(response):
+    """Read a small error envelope, returning static text only."""
+    try:
+        chunks, length = [], 0
+        async for chunk in response.content.iter_chunked(1024):
+            length += len(chunk)
+            if length > 4096:
+                return None
+            chunks.append(chunk)
+        value = json.loads(b"".join(chunks))
+        if (isinstance(value, dict) and value.get("status") == "refused"
+                and isinstance(value.get("reason"), str)):
+            return REFUSAL_DETAILS.get(value["reason"])
+    except (aiohttp.ClientError, asyncio.TimeoutError, ValueError, UnicodeError, RecursionError):
+        pass
+    return None
+
 
 class GatewayError(Exception):
     """Only sanitized status is safe to display; never include server response bodies."""
-    def __init__(self, status, action_id=None):
+    def __init__(self, status, action_id=None, *, detail=None):
         self.status = status
         self.action_id = action_id
-        super().__init__(f"Gateway {status}" + (f"; action {action_id}; do not retry blindly" if action_id else ""))
+        super().__init__(f"Gateway {status}" + (f": {detail}" if detail else "")
+                         + (f"; action {action_id}; do not retry blindly" if action_id else ""))
 
 
 class GatewayClient:
@@ -33,7 +59,8 @@ class GatewayClient:
                     status = ("authentication rejected" if response.status in (401, 403)
                               else "refused" if response.status in (400, 409, 413, 429)
                               else "outcome unknown" if method == "POST" else "unavailable")
-                    raise GatewayError(status, action_id)
+                    detail = await refusal_detail(response) if status == "refused" else None
+                    raise GatewayError(status, action_id, detail=detail)
                 chunks = []
                 length = 0
                 async for chunk in response.content.iter_chunked(16384):
