@@ -233,7 +233,11 @@ data:
   text: The front door is open.
 ```
 
-The gateway pushes a phone-fetched HTTP content URL. Cisco HTTP priority 2 defers display to idle; it does **not** make internal `Key:` or `Dial:` operations idle-only. The gateway therefore also checks actual call state. Resource URLs expire after 120 seconds; an already displayed page may remain visible until the phone's **Exit** softkey is pressed.
+The gateway pushes a phone-fetched HTTP content URL. Starting with [Cisco gateway Beta 19](https://github.com/4alvit/cisco-home-telephony/releases/tag/v0.1.0-beta.19), a manually sent text message uses HTTP priority 0 to bring it to the foreground after the existing call-state and voice-ownership checks pass. This allows the message to replace a currently open native XML application without bypassing those checks.
+
+Images and motion snapshots continue to use priority 2, which displays only when the phone considers its application interface idle. Priority 2 can drop the request while a native XML application is busy; it does **not** queue the request for later display. Older gateway versions also used priority 2 for manual text messages. HTTP priorities do not make internal `Key:` or `Dial:` operations idle-only. Resource URLs expire after 120 seconds; an already displayed page may remain visible until the phone's **Exit** softkey is pressed.
+
+An accepted gateway command or successful phone Execute response is not proof that the content rendered. Confirm the visible message on the phone or in a current screen capture; do not infer display success from the command acknowledgement alone.
 
 ## Recurring alarms and countdown timers
 
