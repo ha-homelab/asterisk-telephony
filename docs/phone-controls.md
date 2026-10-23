@@ -216,6 +216,10 @@ call-preemption, wake-word or unattended acceptance.
 
 Enter **Message title** and **Message text**, then press **Send message**. Enter a relative image filename such as `arrival.png`, or an absolute file path inside an approved folder, then press **Send image**. Relative filenames resolve inside `/config/phone-images`. Text input values are kept only in memory and reset when the integration reloads; they are not saved in the schedule store. The text input is limited to 250 characters by the HA entity state limit; the direct action allows up to 2,000 characters.
 
+After a Home Assistant restart or integration reload, enter the message again. Apply or confirm the **Message text** edit before pressing **Send message**; text still being edited in the browser may not yet be saved to the entity. Both the title and message must be nonempty; an empty Send message request is rejected locally before contacting the gateway, with a prompt naming the missing field. Titles allow up to 48 characters. Unicode, newline and tab are preserved; other control characters, including carriage returns from pasted CRLF text, are rejected. You can still clear the text fields without sending anything.
+
+If the gateway refuses a valid message because either phone line has a call, the voice assistant holds the phone, or its pending-message capacity is full, the error now gives a short reason. Finish the call or investigate the voice status before sending again. Responses remain bounded and unknown errors remain generic; the integration never retries a send automatically or includes private message content in errors.
+
 The administrator-only actions `cisco_phone_control.send_message` and `cisco_phone_control.send_image` accept `entry_id`, the discovered primary handset ID in `phone`, and `title`, plus `text` or `path`. They avoid putting payloads into text entity states. HA automation traces and service events may still include the action inputs; keep sensitive content out of public logs and traces.
 
 An example automation action, after substituting the actual entry ID and primary handset ID:

@@ -1,7 +1,7 @@
 {
   "domain": "cisco_phone_control",
   "name": "Cisco phone controls",
-  "version": "0.7.0b1",
+  "version": "0.7.0b2",
   "codeowners": [
     "@4alvit"
   ],

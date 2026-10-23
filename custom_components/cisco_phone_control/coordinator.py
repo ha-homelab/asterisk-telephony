@@ -12,7 +12,7 @@ from homeassistant.util import dt as dt_util
 
 from .api import GatewayError
 from .const import DOMAIN
-from .model import MEDIA_IDENTITY, media_observation, owned_channel, radio_sources, read_image, supports_media
+from .model import MEDIA_IDENTITY, media_observation, notification_text, owned_channel, radio_sources, read_image, supports_media
 from .schedule import defaults, pending, start_timer, validate_settings
 from .storage import ScheduleStore, async_drain_task
 
@@ -191,6 +191,11 @@ class PhoneCoordinator(DataUpdateCoordinator):
             if self._closing:
                 raise HomeAssistantError("Cisco phone controls are unloading")
             try:
+                values = dict(values or {})
+                if action in ("message", "image"):
+                    values["title"] = notification_text(values.get("title", "Home Assistant"), title=True)
+                if action == "message":
+                    values["text"] = notification_text(values.get("text"))
                 # Fresh server evidence, not an old HA state, chooses call ownership.
                 fresh = await self.client.snapshot()
                 if self._closing:
@@ -200,7 +205,6 @@ class PhoneCoordinator(DataUpdateCoordinator):
                 phone = self.phone(primary)
                 if phone is None:
                     raise HomeAssistantError("Handset is no longer present at the gateway")
-                values = dict(values or {})
                 line = values.get("line", self.settings[primary]["line"])
                 if action != "alert_stop" and line not in phone["lines"]:
                     raise HomeAssistantError("Selected line does not belong to this handset")
@@ -261,6 +265,10 @@ class PhoneCoordinator(DataUpdateCoordinator):
         return result
 
     async def send_image(self, primary, title, path):
+        try:
+            title = notification_text(title, title=True)
+        except ValueError as err:
+            raise HomeAssistantError(str(err)) from None
         try:
             raw = await self.hass.async_add_executor_job(read_image, path, self.image_roots)
         except (OSError, ValueError):
