@@ -52,6 +52,20 @@ HANDS_FREE_SCHEMA = vol.Schema({
 })
 
 
+def volume_steps(value):
+    if type(value) is not int or not 1 <= value <= 5:
+        raise vol.Invalid("Volume steps must be an integer from 1 to 5")
+    return value
+
+
+HARDWARE_VOLUME_SCHEMA = vol.Schema({
+    vol.Required("entry_id"): str, vol.Required("phone"): str,
+    vol.Required("line"): str, vol.Required("context"): vol.In(("ringer", "call")),
+    vol.Required("direction"): vol.In(("up", "down")),
+    vol.Optional("steps", default=1): volume_steps,
+})
+
+
 async def async_setup(hass, config):
     def resolve(call):
         entry = hass.config_entries.async_get_entry(call.data["entry_id"])
@@ -81,6 +95,11 @@ async def async_setup(hass, config):
         options = {key: value for key, value in call.data.items()
                    if key not in ("entry_id", "phone", "line", "operation")}
         return await schedule(coordinator, primary, call.data["line"], call.data["operation"], **options)
+
+    async def hardware_volume_service(call):
+        coordinator, primary = resolve(call)
+        return await coordinator.perform(primary, "hardware_volume", {
+            key: call.data[key] for key in ("line", "context", "direction", "steps")})
 
     async def voice_service(call):
         coordinator, primary = resolve(call)
@@ -113,6 +132,8 @@ async def async_setup(hass, config):
                                 vol.Schema({**BASE, vol.Required("path"): vol.All(str, vol.Length(min=1, max=250))}))
     async_register_admin_service(hass, DOMAIN, "schedule", schedule_service,
                                 SCHEDULE_SCHEMA, supports_response=SupportsResponse.ONLY)
+    async_register_admin_service(hass, DOMAIN, "hardware_volume", hardware_volume_service,
+                                HARDWARE_VOLUME_SCHEMA, supports_response=SupportsResponse.ONLY)
     return True
 
 

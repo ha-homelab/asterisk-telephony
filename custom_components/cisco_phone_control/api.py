@@ -8,6 +8,9 @@ import aiohttp
 from .model import gateway_url, inventory
 
 REFUSAL_DETAILS = {
+    "ringer_volume_requires_idle_phone": "Ringer volume requires an idle phone; finish its call or alert first",
+    "call_volume_context_changed": "Select the line with the single connected call, resume it if held, then refresh",
+    "player_phone_busy": "The phone has another media owner or pending cleanup; physical volume was not sent",
     "bad_text": "Check Message title and Message text: both must be nonempty and contain no unsupported control characters",
     "phone_busy": "The phone has an active call on one of its lines; finish the call before sending",
     "voice_phone_busy": "The voice assistant owns the phone or requires recovery; check its status before sending",

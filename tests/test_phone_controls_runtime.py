@@ -441,7 +441,7 @@ class PhoneRuntimeTests(unittest.IsolatedAsyncioTestCase):
         collected = []
         for platform in (button, switch, select, text, time, sensor, number):
             await platform.async_setup_entry(self.hass, self.entry, collected.extend)
-        self.assertEqual(len(collected), 29)
+        self.assertEqual(len(collected), 33)
         self.assertEqual(len({e.unique_id for e in collected}), len(collected))
         for index, entity in enumerate(collected):
             entity.hass = self.hass
@@ -455,8 +455,8 @@ class PhoneRuntimeTests(unittest.IsolatedAsyncioTestCase):
         self.data["phones"].append(extra)
         self.c.prepare_inventory(self.data)
         self.c.async_set_updated_data(copy.deepcopy(self.data))
-        self.assertEqual(len(collected), 58)
-        self.assertEqual(len({e.unique_id for e in collected}), 58)
+        self.assertEqual(len(collected), 66)
+        self.assertEqual(len({e.unique_id for e in collected}), 66)
 
     async def test_config_flow_validates_gateway_and_hides_token(self):
         from custom_components.cisco_phone_control.config_flow import CiscoPhoneConfigFlow
@@ -498,7 +498,7 @@ class PhoneRuntimeTests(unittest.IsolatedAsyncioTestCase):
         self.assertIsNotNone(registry.async_get(unrelated))
         self.assertIsNotNone(registry.async_get(unrelated_owned_key))
         owned = [s for s in self.hass.states.async_all() if s.entity_id.startswith(("button.cisco_201", "switch.cisco_201", "select.cisco_201", "text.cisco_201", "time.cisco_201", "number.cisco_201", "sensor.cisco_201"))]
-        self.assertEqual(len(owned), 29)
+        self.assertEqual(len(owned), 33)
         # Real HA service calls share button validation before any gateway I/O.
         from homeassistant.exceptions import HomeAssistantError
         self.client.snapshot.reset_mock()
@@ -529,6 +529,22 @@ class PhoneRuntimeTests(unittest.IsolatedAsyncioTestCase):
             "entry_id": self.entry.entry_id, "line": "202", "operation": "status",
         }, blocking=True, return_response=True)
         self.assertEqual((response["phone"], response["lines"]), ("201", ["201", "202"]))
+        # The new administrator action returns key acknowledgement, not a level.
+        self.data["phones"][0]["capabilities"] = ["hardware_volume"]
+        self.client.action.return_value = {
+            "context": "ringer", "direction": "down", "requested_steps": 2,
+            "acknowledged_steps": 2, "level_known": False, "volume_level": None,
+            "audio_output": "contextual", "physical_context_verified": False}
+        response = await self.hass.services.async_call(DOMAIN, "hardware_volume", {
+            "entry_id": self.entry.entry_id, "phone": "201", "line": "202",
+            "context": "ringer", "direction": "down", "steps": 2,
+        }, blocking=True, return_response=True)
+        self.assertEqual(response["acknowledged_steps"], 2)
+        self.assertIsNone(response["volume_level"])
+        self.assertFalse(response["physical_context_verified"])
+        self.assertEqual(self.c.settings["201"]["line"], "201")
+        self.client.action.assert_awaited_with("201", "hardware_volume", {
+            "line": "202", "context": "ringer", "direction": "down", "steps": 2}, None)
         from custom_components.cisco_phone_control.api import GatewayError
         self.client.snapshot.side_effect = GatewayError("synthetic offline")
         response = await self.hass.services.async_call(DOMAIN, "schedule", {

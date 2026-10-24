@@ -1,3 +1,43 @@
+hardware_volume:
+  name: Change physical phone volume
+  description: Send 1–5 physical volume-key presses. Select an idle ringer or the single connected call's line. Resume a locally held call first. The phone chooses the current handset, headset or speaker path; no absolute level or output selection is available. Voice ownership is never stopped automatically. Administrator only; never retry an unknown outcome blindly.
+  fields:
+    entry_id:
+      name: Integration
+      required: true
+      selector:
+        config_entry:
+          integration: cisco_phone_control
+    phone:
+      name: Primary handset ID
+      required: true
+      example: "201"
+      selector:
+        text:
+    line:
+      name: Selected phone line
+      required: true
+      example: "202"
+      selector:
+        text:
+    context:
+      required: true
+      selector:
+        select:
+          options: [ringer, call]
+    direction:
+      required: true
+      selector:
+        select:
+          options: [up, down]
+    steps:
+      default: 1
+      selector:
+        number:
+          min: 1
+          max: 5
+          step: 1
+          mode: box
 send_message:
   name: Send phone message
   description: Send private text without storing it in a text entity. Administrator only. Automation traces may still contain action inputs.

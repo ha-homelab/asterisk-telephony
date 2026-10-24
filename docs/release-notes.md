@@ -1,5 +1,15 @@
 # Release notes
 
+## 0.8.0b2
+
+Adds capability-gated physical ringer/call volume up/down buttons and the
+administrator `hardware_volume` action for 1–5 key presses. Fresh call identity
+and complete acknowledgements are required; unknown outcomes are never retried.
+The phone selects the physical audio path and does not expose an absolute level.
+The existing media slider remains digital gain. See [physical volume](physical-volume.md)
+for selected-line behavior, local Hold limitations and automation examples.
+This source release does not itself install a gateway or verify physical sound.
+
 ## 0.8.0b1
 
 The existing handset media players gain HTTP(S) audio, Home Assistant media-source
