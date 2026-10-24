@@ -3,8 +3,8 @@
 Monitor SIP phones, control Cisco handsets, schedule timers and weekday alarms,
 send text or pictures, and reach Assist through extension **630**.
 
-The **0.8.0b1** component adds managed audio playback, queues and transport
-controls to existing Cisco media players. It requires the matching gateway;
+The **0.8.0b2** component adds [physical phone volume buttons](docs/physical-volume.md)
+alongside managed audio playback, queues and transport controls. It requires the matching gateway;
 older radio-only gateways retain their compatible behavior.
 See [release notes and qualification](docs/release-notes.md).
 

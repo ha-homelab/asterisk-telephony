@@ -47,5 +47,6 @@ jobs:
           .local/runtime-venv/bin/python -m unittest discover -s tests -p test_phone_controls_runtime.py -v
           .local/runtime-venv/bin/python -m unittest discover -s tests -p test_phone_media_runtime.py -v
           .local/runtime-venv/bin/python -m unittest discover -s tests -p test_full_media_runtime.py -v
+          .local/runtime-venv/bin/python -m unittest discover -s tests -p test_hardware_volume.py -v
           .local/runtime-venv/bin/python -m unittest discover -s tests -p test_hands_free_runtime.py -v
           .local/runtime-venv/bin/python -m unittest discover -s tests -p 'test_schedule_*.py' -v
