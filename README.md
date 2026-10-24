@@ -3,7 +3,9 @@
 Monitor SIP phones, control Cisco handsets, schedule timers and weekday alarms,
 send text or pictures, and reach Assist through extension **630**.
 
-The **0.7.0** release retains the tested 0.7.0rc1 implementation.
+The **0.8.0b1** component adds managed audio playback, queues and transport
+controls to existing Cisco media players. It requires the matching gateway;
+older radio-only gateways retain their compatible behavior.
 See [release notes and qualification](docs/release-notes.md).
 
 This project uses the existing
@@ -11,9 +13,10 @@ This project uses the existing
 version **1.0.5**. It adds a verifiable installer, a local configuration
 generator, examples, documentation, and SVG diagrams. Upstream source code
 is not redistributed here. The included **Cisco Phone Control** integration
-groups call controls, schedules, an optional voice assistant, and a radio media
+groups call controls, schedules, an optional voice assistant, and an audio media
 player on each physical handset device through the authenticated local [phone gateway](https://github.com/4alvit/cisco-home-telephony/blob/main/docs/phone-gateway.md).
 See [installation and handset controls](docs/phone-controls.md).
+See [music, radio, Music Assistant and media controls](docs/media-player.md).
 
 ![Architecture](docs/diagrams/architecture.svg)
 

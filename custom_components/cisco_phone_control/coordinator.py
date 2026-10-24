@@ -12,7 +12,7 @@ from homeassistant.util import dt as dt_util
 
 from .api import GatewayError
 from .const import DOMAIN
-from .model import MEDIA_IDENTITY, media_observation, notification_text, owned_channel, radio_sources, read_image, supports_media
+from .model import MEDIA_IDENTITY, media_observation, notification_text, owned_channel, player_action, radio_sources, read_image, supports_media
 from .schedule import defaults, pending, start_timer, validate_settings
 from .storage import ScheduleStore, async_drain_task
 
@@ -208,7 +208,9 @@ class PhoneCoordinator(DataUpdateCoordinator):
                 line = values.get("line", self.settings[primary]["line"])
                 if action != "alert_stop" and line not in phone["lines"]:
                     raise HomeAssistantError("Selected line does not belong to this handset")
-                if action in ("media_play", "media_stop"):
+                if action.startswith("player_"):
+                    values = player_action(phone, action, values, radio_sources(fresh), line)
+                elif action in ("media_play", "media_stop"):
                     sources = radio_sources(fresh)
                     media = media_observation(phone, sources)
                     if not supports_media(phone) or media is None:

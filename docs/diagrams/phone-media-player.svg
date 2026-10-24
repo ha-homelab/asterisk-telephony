@@ -1,6 +1,6 @@
 <svg xmlns="http://www.w3.org/2000/svg" width="1280" height="820" viewBox="0 0 1280 820" role="img" aria-labelledby="title desc">
-  <title id="title">Cisco radio playback through Home Assistant</title>
-  <desc id="desc">One media player per physical handset uses an allowed radio service through the existing gateway and Asterisk. Playing requires the identified radio call and matching Up AudioSocket path; Stop targets only that radio call. Offline phones remain in the inventory and do not automatically replay. Verify actual media state and audible playback after installation.</desc>
+  <title id="title">Cisco music playback through Home Assistant</title>
+  <desc id="desc">One media player per physical handset accepts radio, HTTP audio and Home Assistant media sources. Music Assistant streams use the same managed gateway. Transport actions target the observed media session. Legacy radio calls retain their exact-call Stop. Offline phones remain in the inventory.</desc>
   <defs>
     <linearGradient id="background" x1="0" y1="0" x2="1" y2="1"><stop stop-color="#101c34"/><stop offset="1" stop-color="#162d43"/></linearGradient>
     <marker id="tealArrow" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto"><path d="M0 0L8 4L0 8Z" fill="#55e0ce"/></marker>
@@ -15,7 +15,7 @@
     </style>
   </defs>
   <rect width="1280" height="820" rx="16" fill="url(#background)"/>
-  <text x="48" y="66" font-size="38" font-weight="700">Radio, one handset at a time</text>
+  <text x="48" y="66" font-size="38" font-weight="700">Music on every Cisco handset</text>
   <text x="48" y="103" class="body muted">An extension of the existing Cisco phone controls integration</text>
   <rect x="48" y="126" width="574" height="34" rx="17" fill="#453a27"/>
   <text x="65" y="149" class="small" style="fill:#ffe0a2">SETUP · Verify state and playback after updating</text>
@@ -25,22 +25,22 @@
   <path d="M80 244L92 234L104 244V259H96V250H88V259H80Z" fill="#102b33"/>
   <text x="128" y="254" class="heading">Home Assistant</text>
   <text x="72" y="299" class="body">One player per handset</text>
-  <text x="72" y="335" class="body muted">Choose from source_list</text>
-  <text x="72" y="368" class="body muted">or play service “708”</text>
-  <text x="72" y="414" class="small" style="fill:#55e0ce">Example service · no arbitrary URLs</text>
+  <text x="72" y="335" class="body muted">Radio, files and media sources</text>
+  <text x="72" y="368" class="body muted">Music Assistant HTTP streams</text>
+  <text x="72" y="414" class="small" style="fill:#55e0ce">Same device and entity identity</text>
 
   <rect x="475" y="202" width="330" height="248" rx="16" class="card" stroke="#f5cc79"/>
   <text x="499" y="250" class="heading">Gateway + Asterisk</text>
-  <text x="499" y="299" class="body">Curated radio catalog</text>
+  <text x="499" y="299" class="body">Fetch and decode audio</text>
   <text x="499" y="335" class="body muted">Allowlist + call admission</text>
-  <text x="499" y="368" class="body muted">PBX radio + AudioSocket</text>
-  <text x="499" y="414" class="small" style="fill:#f5cc79">Track the exact call identity</text>
+  <text x="499" y="368" class="body muted">Managed queue + AudioSocket</text>
+  <text x="499" y="414" class="small" style="fill:#f5cc79">Track the exact session identity</text>
 
   <rect x="902" y="202" width="330" height="248" rx="16" class="card" stroke="#ff9b86"/>
   <text x="926" y="250" class="heading">Cisco handset</text>
   <text x="926" y="299" class="body">One physical speaker</text>
   <text x="926" y="335" class="body muted">Sibling lines, one device</text>
-  <text x="926" y="368" class="body muted">Radio arrives as a call</text>
+  <text x="926" y="368" class="body muted">Managed audio arrives by SIP</text>
   <text x="926" y="414" class="small" style="fill:#ffb29f">Confirm audible sound separately</text>
 
   <path d="M378 315H463" stroke="#55e0ce" stroke-width="3" marker-end="url(#tealArrow)"/>
@@ -50,15 +50,15 @@
 
   <rect x="48" y="490" width="1184" height="130" rx="16" fill="#173d44" stroke="#55e0ce"/>
   <text x="72" y="527" class="heading">Observe before reporting Playing</text>
-  <text x="72" y="562" class="body">Identified PBX radio call + matching Up AudioSocket path</text>
-  <text x="72" y="595" class="body muted">Accepted request ≠ verified playback path ≠ human confirmation of sound</text>
+  <text x="72" y="562" class="body">Pause · resume · queue · seek when available · stream volume · metadata</text>
+  <text x="72" y="595" class="body muted">Controls follow observed capabilities; accepted requests do not prove audible sound.</text>
 
   <rect x="48" y="648" width="571" height="126" rx="16" fill="#333448" stroke="#b9a5ff"/>
-  <text x="72" y="685" class="heading">Stop, then change station</text>
-  <text x="72" y="720" class="body muted">End only the exact observed radio call.</text>
-  <text x="72" y="751" class="body muted">Never stop a replacement or unrelated call.</text>
+  <text x="72" y="685" class="heading">Own only the media session</text>
+  <text x="72" y="720" class="body muted">Stop or replace the managed audio.</text>
+  <text x="72" y="751" class="body muted">Leave unrelated calls untouched.</text>
   <rect x="645" y="648" width="587" height="126" rx="16" fill="#303743" stroke="#9cb4cf"/>
   <text x="669" y="685" class="heading">Keep offline phones in the inventory</text>
   <text x="669" y="720" class="body muted">Reconnection updates availability.</text>
-  <text x="669" y="751" class="body muted">No automatic radio replay or queued request.</text>
+  <text x="669" y="751" class="body muted">No automatic playback on reconnection.</text>
 </svg>
