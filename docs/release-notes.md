@@ -1,5 +1,18 @@
 # Release notes
 
+## 0.7.0
+
+The stable release retains the implementation accepted in 0.7.0rc1. Only the
+component version and release documentation change. The RC passed the contract
+suite and both supported Home Assistant runtime jobs; its published component
+archive and all accompanying verification files were downloaded and verified.
+
+The stable component is packaged from its own reviewed commit after the same
+checks pass again. Its provenance and checksums identify these new metadata
+bytes; it is not presented as a byte-for-byte copy of the RC archive. Installation
+and rollback follow the guidance below. No live phone test or deployment is
+implied by this source release.
+
 ## 0.7.0rc1
 
 This candidate changes only release metadata and documentation from 0.7.0b2.
