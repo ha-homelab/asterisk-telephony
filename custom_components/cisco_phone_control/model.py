@@ -21,7 +21,7 @@ def finite_number(value, low=0, high=None):
 
 def player_source(value, sources):
     """Accept advertised stations or HTTP audio without logging private URLs."""
-    if not isinstance(value, str) or not value or len(value) > 8192:
+    if not isinstance(value, str) or not value or len(value) > 4096:
         raise ValueError("Choose an advertised station or an HTTP(S) audio URL")
     if value in sources:
         return value
@@ -29,7 +29,7 @@ def player_source(value, sources):
         parts = urlsplit(value)
         valid = (parts.scheme in ("http", "https") and parts.hostname
                  and not parts.username and not parts.password and not parts.fragment
-                 and not any(ord(char) < 33 for char in value))
+                 and not any(ord(char) < 33 or ord(char) > 126 for char in value))
         parts.port
     except ValueError:
         valid = False
@@ -47,12 +47,12 @@ def player_metadata(value):
         item = value.get(key)
         if item is None:
             continue
-        if not isinstance(item, str) or len(item) > 512 or any(ord(char) < 32 for char in item):
+        if not isinstance(item, str) or len(item) > 256 or any(ord(char) < 32 or ord(char) == 127 for char in item):
             raise ValueError("Media metadata must be short text without control characters")
         result[key] = item
     if value.get("duration") is not None:
-        if not finite_number(value["duration"]):
-            raise ValueError("Media duration must be a finite nonnegative number")
+        if not finite_number(value["duration"], high=7200):
+            raise ValueError("Media duration must be a finite number between zero and 7200 seconds")
         result["duration"] = value["duration"]
     return result
 

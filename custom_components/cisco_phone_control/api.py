@@ -12,6 +12,14 @@ REFUSAL_DETAILS = {
     "phone_busy": "The phone has an active call on one of its lines; finish the call before sending",
     "voice_phone_busy": "The voice assistant owns the phone or requires recovery; check its status before sending",
     "too_many_pending_messages": "The gateway has too many pending messages; wait for them to expire before sending another",
+    "invalid_player_source": "Use an allowed HTTP(S) audio source or advertised station with bounded metadata",
+    "player_session_changed": "The media session changed; refresh the player before controlling it",
+    "player_line_changed": "The active media line changed; refresh before controlling the session",
+    "player_call_not_observed": "The media call is still starting; wait for its observed state before controlling it",
+    "player_dialplan_unavailable": "Install and activate the matching managed-media PBX configuration",
+    "player_call_limit": "The gateway has reached its configured simultaneous media-session limit",
+    "player_control_not_supported": "This media source or current session does not support the requested control",
+    "player_not_active": "No managed media session is active on this phone",
 }
 
 

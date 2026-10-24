@@ -69,9 +69,18 @@ class ManagedMediaModelTests(unittest.TestCase):
         for url in ("https://media.example.test/song.mp3?token=example", "http://192.0.2.10:8097/stream", "708"):
             self.assertEqual(model.player_source(url, {"708": "Music"}), url)
         for url in ("file:///etc/passwd", "ftp://example.test/a", "999", "https://user:pass@example.test/a",
-                    "https://example.test/a#fragment", "https://example.test/a\nheader", "https://example.test:bad/a"):
+                    "https://example.test/a#fragment", "https://example.test/a\nheader", "https://example.test:bad/a",
+                    "https://example.test/café.mp3", "https://example.test/a\x7f", "https://example.test/" + "a" * 4096):
             with self.subTest(url=url), self.assertRaises(ValueError):
                 model.player_source(url, {})
+
+    def test_metadata_matches_runtime_limits_and_ignores_unrelated_artwork(self):
+        self.assertEqual(model.player_metadata({"title": "A" * 256, "duration": 7200,
+                                               "images": [{"url": "ignored"}]}),
+                         {"title": "A" * 256, "duration": 7200})
+        for metadata in ({"title": "A" * 257}, {"artist": "bad\x7f"}, {"duration": 7201}):
+            with self.assertRaises(ValueError):
+                model.player_metadata(metadata)
 
     def test_transport_cannot_target_replacement_session_or_selected_sibling_line(self):
         phone = full_media_snapshot(active=True)["phones"][0]
