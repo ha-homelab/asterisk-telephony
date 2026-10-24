@@ -14,6 +14,7 @@ REFUSAL_DETAILS = {
     "bad_text": "Check Message title and Message text: both must be nonempty and contain no unsupported control characters",
     "phone_busy": "The phone has an active call on one of its lines; finish the call before sending",
     "voice_phone_busy": "The voice assistant owns the phone or requires recovery; check its status before sending",
+    "hands_free_enabled": "Hands-free voice is enabled on this phone; this action cannot interrupt it. Check the voice controls before changing physical volume",
     "too_many_pending_messages": "The gateway has too many pending messages; wait for them to expire before sending another",
     "invalid_player_source": "Use an allowed HTTP(S) audio source or advertised station with bounded metadata",
     "player_session_changed": "The media session changed; refresh the player before controlling it",
