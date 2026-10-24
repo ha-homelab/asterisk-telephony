@@ -3,7 +3,7 @@
 Monitor SIP phones, control Cisco handsets, schedule timers and weekday alarms,
 send text or pictures, and reach Assist through extension **630**.
 
-The **0.7.0rc1** release candidate retains the tested 0.7.0b2 implementation.
+The **0.7.0** release retains the tested 0.7.0rc1 implementation.
 See [release notes and qualification](docs/release-notes.md).
 
 This project uses the existing
