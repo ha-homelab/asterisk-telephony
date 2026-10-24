@@ -20,6 +20,11 @@ volume. Acknowledgement means the key events were accepted, not that the phone
 measured a new level or verified that physical audio path. At its limit, another
 key press may have no audible effect.
 
+For call volume to persist into future calls, the phone may require its
+currently displayed **Save** softkey. This integration does not guess or press
+a softkey position. See the [illustrated CLI and protocol guide](https://github.com/4alvit/cisco-home-telephony/blob/main/docs/hardware-volume.md)
+for the diagram, command examples and official Cisco references.
+
 The existing media-player volume slider remains **digital stream gain**. It does
 not move the phone's physical volume setting. A quiet physical speaker can still
 limit loudness with digital gain at maximum. Neither control adjusts an unrelated
