@@ -3,6 +3,9 @@
 Monitor SIP phones, control Cisco handsets, schedule timers and weekday alarms,
 send text or pictures, and reach Assist through extension **630**.
 
+The **0.7.0rc1** release candidate retains the tested 0.7.0b2 implementation.
+See [release notes and qualification](docs/release-notes.md).
+
 This project uses the existing
 [TECH7Fox/asterisk-hass-integration](https://github.com/TECH7Fox/asterisk-hass-integration),
 version **1.0.5**. It adds a verifiable installer, a local configuration
