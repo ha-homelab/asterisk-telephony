@@ -1,14 +1,147 @@
 """Pure validation helpers. No credentials, channels, or message bodies are logged."""
+import math
 import os
 from pathlib import Path
 import re
 import stat
 from urllib.parse import urlsplit
+from uuid import UUID
 
 MAX_IMAGE = 2 * 1024 * 1024
 NUMBER = re.compile(r"[0-9]{1,12}\Z")
 MEDIA_REASONS = frozenset({"offline", "dnd", "alert", "call", "voice", "unavailable", "ambiguous", "unmarked"})
 MEDIA_IDENTITY = ("source", "line", "channel", "uniqueid")
+PLAYER_CAPABILITIES = frozenset({"play", "url", "pause", "resume", "seek", "volume", "mute", "queue", "next", "previous"})
+
+
+def finite_number(value, low=0, high=None):
+    return (type(value) in (int, float) and math.isfinite(value)
+            and value >= low and (high is None or value <= high))
+
+
+def player_source(value, sources):
+    """Accept advertised stations or HTTP audio without logging private URLs."""
+    if not isinstance(value, str) or not value or len(value) > 8192:
+        raise ValueError("Choose an advertised station or an HTTP(S) audio URL")
+    if value in sources:
+        return value
+    try:
+        parts = urlsplit(value)
+        valid = (parts.scheme in ("http", "https") and parts.hostname
+                 and not parts.username and not parts.password and not parts.fragment
+                 and not any(ord(char) < 33 for char in value))
+        parts.port
+    except ValueError:
+        valid = False
+    if not valid:
+        raise ValueError("Choose an advertised station or an HTTP(S) audio URL without embedded credentials")
+    return value
+
+
+def player_metadata(value):
+    """Bound only supported metadata; artwork URLs are not sent to the phone."""
+    if not isinstance(value, dict):
+        raise ValueError("Invalid media metadata")
+    result = {}
+    for key in ("title", "artist", "album"):
+        item = value.get(key)
+        if item is None:
+            continue
+        if not isinstance(item, str) or len(item) > 512 or any(ord(char) < 32 for char in item):
+            raise ValueError("Media metadata must be short text without control characters")
+        result[key] = item
+    if value.get("duration") is not None:
+        if not finite_number(value["duration"]):
+            raise ValueError("Media duration must be a finite nonnegative number")
+        result["duration"] = value["duration"]
+    return result
+
+
+def player_observation(phone):
+    """Validate the versioned managed player independently of legacy radio."""
+    if "player" not in phone:
+        return None
+    player = phone["player"]
+    if (not isinstance(player, dict) or type(player.get("v")) is not int or player["v"] != 1
+            or player.get("state") not in ("idle", "buffering", "playing", "paused", "error", "blocked")
+            or not isinstance(player.get("capabilities"), list)
+            or any(not isinstance(cap, str) for cap in player["capabilities"])):
+        raise ValueError("Invalid managed player observation")
+    session = player.get("session_id")
+    if session is not None:
+        try:
+            UUID(session)
+        except (ValueError, TypeError, AttributeError):
+            raise ValueError("Invalid managed player session") from None
+        if player.get("line") not in phone["lines"]:
+            raise ValueError("Managed player line does not belong to this handset")
+    elif player.get("line") is not None or player["state"] in ("buffering", "playing", "paused"):
+        raise ValueError("Active managed player requires a session and line")
+    if player.get("source_id") is not None and not isinstance(player["source_id"], str):
+        raise ValueError("Invalid managed player source")
+    player_metadata(player)
+    if (not finite_number(player.get("position"))
+            or not finite_number(player.get("volume_level"), high=1)
+            or type(player.get("is_volume_muted")) is not bool
+            or type(player.get("seekable")) is not bool
+            or not finite_number(player.get("position_updated_at"))):
+        raise ValueError("Invalid managed player transport values")
+    length, index = player.get("queue_length"), player.get("queue_index")
+    if (type(length) is not int or not 0 <= length <= 1000
+            or (length == 0 and index not in (None, -1, 0))
+            or (length > 0 and (type(index) is not int or not 0 <= index < length))):
+        raise ValueError("Invalid managed player queue")
+    reason = player.get("reason")
+    if reason is not None and (not isinstance(reason, str) or len(reason) > 128):
+        raise ValueError("Invalid managed player reason")
+    return player
+
+
+def player_action(phone, action, values, sources, selected_line):
+    """Fence transport commands to the observed session, including sibling lines."""
+    player = player_observation(phone)
+    if player is None or not phone["online"]:
+        raise ValueError("The managed phone media player is unavailable")
+    operation = action.removeprefix("player_")
+    capability = "queue" if operation == "clear_queue" else operation
+    if operation != "stop" and capability not in player["capabilities"]:
+        raise ValueError("The gateway does not support this media operation")
+    if values.get("session_id") != player.get("session_id"):
+        raise ValueError("The media session changed; refresh the player before controlling it")
+    session = player.get("session_id")
+    line = player.get("line") if session else selected_line
+    if line not in phone["lines"] or values.get("line", line) != line:
+        raise ValueError("The media session line changed; no other call was controlled")
+    result = {"session_id": session, "line": line}
+    if operation == "play":
+        if player["state"] == "blocked" and player.get("reason") != "voice":
+            raise ValueError("The phone is busy with a call, alert or voice session")
+        source = player_source(values.get("source"), sources)
+        if source not in sources and "url" not in player["capabilities"]:
+            raise ValueError("The gateway does not support audio URLs")
+        enqueue = values.get("enqueue", "replace")
+        if enqueue not in ("replace", "add", "next", "play"):
+            raise ValueError("Unsupported media queue operation")
+        if enqueue != "replace" and "queue" not in player["capabilities"]:
+            raise ValueError("The gateway does not support a media queue")
+        result.update(source=source, metadata=player_metadata(values.get("metadata", {})), enqueue=enqueue)
+    elif operation == "volume":
+        if not finite_number(values.get("volume_level"), high=1):
+            raise ValueError("Media volume must be between zero and one")
+        result["volume_level"] = values["volume_level"]
+    elif operation == "mute":
+        if type(values.get("is_volume_muted")) is not bool:
+            raise ValueError("Media mute must be a boolean")
+        result["is_volume_muted"] = values["is_volume_muted"]
+    else:
+        if session is None:
+            raise ValueError("No managed media session is active")
+        if operation == "seek":
+            position = values.get("position")
+            if not player["seekable"] or not finite_number(position, high=player.get("duration")):
+                raise ValueError("This stream cannot seek to that position")
+            result["position"] = position
+    return result
 
 
 def notification_text(value, *, title=False):
@@ -159,6 +292,7 @@ def inventory(value):
     sources = radio_sources(value)
     for phone in phones:
         media_observation(phone, sources)
+        player_observation(phone)
     return value
 
 

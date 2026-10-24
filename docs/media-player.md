@@ -1,82 +1,44 @@
-# Radio playback on a Cisco phone
+# Music and radio on Cisco phones
 
-**Cisco phone controls 0.7.0b1** (`cisco_phone_control`) adds a media player
-to each existing handset device. It belongs to this
-[Terraform-managed repository](../README.md#repository-management); it does not
-require another repository or a second phone integration. Use the matching
-[Beta 18 gateway](https://github.com/4alvit/cisco-home-telephony/releases/tag/v0.1.0-beta.18)
-and generated PBX radio configuration. Installing the component alone does not
-prove audio delivery; complete the state and playback checks below.
+The existing **Cisco phone controls** integration provides one media player per
+physical handset, including offline handsets. Both SIP lines share the same
+speaker and media player. Upgrading preserves the device and entity IDs; an
+existing entity named **Radio** keeps that name and gains the supported controls.
 
-![Radio selection, observed playback and exact-call Stop](diagrams/phone-media-player.svg)
+![Home Assistant audio sources, managed playback and observed handset state](diagrams/phone-media-player.svg)
 
-## One player per handset
+## Install both sides
 
-Discovery creates one **Radio** media-player entity for each configured physical
-phone,
-including offline phones. An inventory of ten handsets therefore creates ten
-players. Two SIP lines on one handset share its device and player; they do not
-become two speakers. Copy the actual entity ID from **Settings → Devices &
-services → Entities**. All entity IDs below are synthetic examples.
+Update `custom_components/cisco_phone_control` using the
+[installation instructions](phone-controls.md#install-and-connect), then restart
+Home Assistant. Install the matching managed-media gateway and its generated
+Asterisk configuration from
+[cisco-home-telephony](https://github.com/4alvit/cisco-home-telephony).
+The gateway must advertise the versioned `phone.player` contract described below.
+The HA component alone cannot add an audio transport to an older gateway.
 
-An offline phone is **Unavailable**. After it reconnects, successful inventory
-updates restore availability automatically. This does not replay a station or
-queue a request made while the phone was offline. HA startup still needs the
-integration's normal successful gateway inventory.
+Keep the existing integration entry, private gateway credentials and entity
+registry. Backups belong outside `custom_components`. Verify the gateway's
+inventory and loaded PBX route before testing playback. If Asterisk configuration
+is mounted from an immutable Kubernetes Secret, replace that Secret and update
+the workload reference; a dialplan reload cannot mount new files.
 
-The catalog contains only services classified as radio and permitted by the
-gateway's dialing allowlist. Inspect the entity's `source_list` for the available
-choices, formatted as `number — label`. The player's **Radio stations** browser
-shows the same catalog. Station availability and names come from that catalog;
-installing this component does not subscribe to a streaming service.
+An older radio-capable gateway remains supported: station selection, browsing,
+observed playback and exact-call Stop continue to work. Additional controls only
+appear when the gateway advertises them. A gateway without either media contract
+leaves the player unavailable.
 
-## Install the compatible component and gateway
+## Choose audio
 
-Use the existing [Cisco phone controls installation](phone-controls.md#install-and-connect)
-to update `custom_components/cisco_phone_control`, preserving the configuration
-entry and entity registry. Install a compatible gateway that advertises the
-`media` capability, exposes `phone.media` in its inventory, and provides the
-catalog and guarded radio controls. Updating only the HA component against an
-older gateway leaves the player unavailable; it cannot establish radio state.
-This requires the Beta 18 gateway contract; Beta 17 does not provide it. Keep component backups outside `custom_components`, as
-described in the [installation guide](installation.md).
+In **Settings → Devices & services → Entities**, find the phone's existing
+`media_player` entity. All entity IDs and hostnames below are synthetic examples.
+Add that entity to a dashboard media-control card to browse media, choose a radio
+source, play, pause, resume and stop.
 
-The matching gateway also requires a regenerated and activated **PBX radio
-dialplan**. Its `CISCO_RADIO` marker binds each radio call to its station and
-channel unique ID. The gateway checks
-`DIALPLAN_EXISTS(home,<source>,cisco-radio-v1)` before voice handoff and again
-before phone commands; without loaded route support, inactive players are
-**Unavailable** and new Play requests are refused. After a dialplan rollback,
-an already started radio call that still has a valid marker and verified
-identity retains its observed **Buffering/Playing** state and exact-call **Stop**.
-
-Regenerate the PBX configuration with the matching provisioning version, then
-activate it using the deployment's configuration update procedure. Reload the
-dialplan only if the running PBX can read the updated files. If `/etc/asterisk`
-comes from an [immutable Kubernetes Secret](https://kubernetes.io/docs/concepts/configuration/secret/#secret-immutable), create a replacement Secret and
-update the workload reference, then plan a PBX workload recreation to mount it;
-a dialplan reload alone cannot activate those replacement files. A PBX restart
-interrupts active calls. Verify the new dialplan is active before testing the
-media player.
-
-After the coordinated update and HA restart, find the media player on each
-existing phone device. Check an online and an offline handset. Keep the existing
-Asterisk integration, native Assist pipelines and private gateway credentials.
-This version adds no pause, seek, volume or current-song metadata controls.
-The displayed title identifies the station, not the track being broadcast.
-
-To add the optional **Radio** media-control card, regenerate and review the
-dashboard using the [actual-registry workflow](phone-controls.md#render-readable-dashboard-tabs).
-The renderer uses the discovered entity ID and still accepts older inventories
-without a media player. Preserve existing views and review the output before
-applying it; the example ID below is not an installation value.
-
-## Play a station
-
-Choose the starting line with the handset's existing **Line** selector. Use
-**Developer tools → Actions** or a dashboard targeting the actual player.
-The following example requests the configured radio service `708`; this is a
-service example, not a household handset number:
+The media browser combines the gateway's configured **Radio stations** catalog
+with Home Assistant's audio media sources. The station picker uses the exact
+`number — label` values in `source_list`. An advertised station can also be played
+directly:
 
 ```yaml
 action: media_player.play_media
@@ -87,92 +49,175 @@ data:
   media_content_type: music
 ```
 
-Alternatively, use `media_player.select_source` with an exact value copied from
-`source_list`, such as `708 — Toddler music` when advertised. Selecting a source
-starts that station; it is not merely a preset for a later Play action:
+For an MP3, internet radio stream or another FFmpeg-decodable HTTP(S) audio source:
 
 ```yaml
-action: media_player.select_source
+action: media_player.play_media
 target:
   entity_id: media_player.example_phone_radio
 data:
-  source: "708 — Toddler music"
+  media_content_id: https://media.example.org/music.mp3
+  media_content_type: audio/mpeg
+  enqueue: replace
+  extra:
+    metadata:
+      title: Example track
+      artist: Example artist
+      album: Example album
 ```
 
-These are standard [Home Assistant media-player actions](https://www.home-assistant.io/integrations/media_player/),
-with this integration's narrower radio-only input contract. `channel` is also
-accepted as the media type for an advertised numeric station. URLs,
-`media-source://` identifiers and arbitrary external phone numbers are not
-accepted. The built-in Radio stations browser is supported; arbitrary media
-sources, announcements and playback queues are not.
-
-## Understand playback and stop it
-
-A successful action means the request was accepted, not that music was heard.
-**Playing** requires the gateway to observe the identified PBX radio call and
-its matching **Up** AudioSocket path. It does not measure sound from the phone's
-speaker. Startup, blocked admission or unknown call state must not be interpreted
-as verified playback.
-
-- **Buffering** and **Playing** come from fresh backend observations, not an
-  optimistic state change when Play is pressed.
-- **Idle** can also represent a blocked, non-radio call. Inspect `media_status`
-  and `blocked_reason`; Idle alone does not mean the phone is safe to start.
-- **Unknown** means no verified radio state. **Unavailable** covers an offline
-  phone, failed/stale inventory or a gateway without the required capability.
-
-To change stations, **Stop first**, wait for current state to confirm that radio
-has ended, then select the new station. This also applies to selecting the same
-station again while it is active. A source change does not implicitly hang up
-an existing call:
+For an audio file in Home Assistant's local media library:
 
 ```yaml
-action: media_player.media_stop
+action: media_player.play_media
 target:
   entity_id: media_player.example_phone_radio
+data:
+  media_content_id: media-source://media_source/local/music.mp3
+  media_content_type: music
 ```
 
-Stop applies only to the exact observed radio call. It must not terminate a
-replacement call, an ordinary conversation or a voice-assistant session. The
-observed line is used even if the Line selector has since changed. If the call
-identity changed or a request timed out, refresh status before another action;
-do not use a broad Hangup to make the player look idle. Ordinary call and voice
-admission rules remain authoritative.
+HA resolves `media-source://` references and local HA media URLs before sending
+the playback URL privately to the gateway. The **gateway**, not the handset,
+must be able to reach the resolved HTTP(S) server. Use HA's reachable internal
+URL when HA and the gateway run on the same network. A browser-accessible URL
+may still be unreachable from a Kubernetes pod. Expired signed links need to be
+resolved again; a queued signed URL must remain valid until the item starts.
+Embedded `user:password@host` URLs, non-HTTP protocols and video requests are
+rejected. This is audio playback, not video rendering.
 
-A Play request may ask the gateway to hand off its own supervised voice call.
-The gateway decides whether that transition is allowed. Other busy or uncertain
-states are refused; do not end an unrelated call to bypass admission.
+## Music Assistant
 
-For acceptance, check one deliberate station request, observed Playing, audible
-output, exact Stop and return to idle. Verify that an unrelated call survives a
-refused Stop, then check offline/reconnect behavior without automatic replay.
-Record software observations separately from human listening results. A single
-handset test does not establish playback on every configured phone.
+Use Music Assistant's **Home Assistant player provider** and enable the existing
+Cisco media-player entity. Its HTTP audio stream reaches the same managed audio
+path as `media_player.play_media`; no additional phone registration is needed.
+Allow network access from the gateway to Music Assistant's stream address and
+port. Keep Music Assistant's advertised stream address reachable from the PBX
+environment, rather than using a loopback address.
 
-## Why not a general network speaker?
+Music Assistant owns its queue when streaming through its player provider. Its
+`extra.metadata` title, artist, album and duration are accepted by the HA bridge.
+The phone's HA queue controls operate the gateway queue, not Music Assistant's
+separate queue. Prefer one queue owner for a listening session. This integration
+does not advertise synchronized groups, crossfade, announcement interruption or
+native Music Assistant queue browsing.
 
-- **URL or media-source bridge — future work.** It would need controlled media
-  fetching, codec conversion, per-phone call ownership and exact cleanup. HA's
-  [Media source](https://www.home-assistant.io/integrations/media_source/) exposes
-  media but does not transcode it. Adding a media-player entity alone supplies
-  none of those transport functions.
-- **Music Assistant — not supported by this version.** Its
-  [Home Assistant player provider](https://www.music-assistant.io/player-support/home-assistant/)
-  expects compatible media playback and streaming behavior. Supporting a numeric
-  radio service through `play_media` does not establish support for its streams,
-  queue or metadata.
-- **Cisco XML/RTP — a separate firmware-specific approach.** Cisco documents
-  [internal multimedia URIs](https://www.cisco.com/c/en/us/td/docs/voice_ip_comm/cuipph/all_models/xsi/7_0/english/programming/guide/70xsi/xsi70uri.html)
-  for these phones. `Play:` reads a constrained raw ring file from TFTP; it is
-  not an MP3 URL player. RTP reception would require its own media conversion,
-  call-priority handling and cleanup qualification. This version uses PBX
-  radio calls instead.
-- **DLNA — requires a renderer.** HA's
-  [DLNA DMR integration](https://www.home-assistant.io/integrations/dlna_dmr/)
-  controls devices implementing that protocol. This integration does not add a
-  DLNA renderer to the phone.
-- **Template or Universal wrapper — presentation only.** A
-  [Universal media player](https://www.home-assistant.io/integrations/universal/)
-  can map commands and state from existing entities. It cannot add an audio
-  transport or turn an unobserved call into verified playback. Avoid wrappers
-  that advertise unsupported pause, volume or track information.
+## Queue and transport controls
+
+`play_media` accepts HA's `enqueue` values: `replace`, `add`, `next` and `play`.
+Use `add` to append a track, or `next` to insert it after the current item.
+`replace` starts a new queue with the requested item. `play` adds the item and
+selects it immediately. Queue operations remain subject to the gateway's bounds.
+
+The standard HA actions target the same entity:
+
+- `media_player.media_pause` pauses managed playback.
+- `media_player.media_play` resumes the current managed session.
+- `media_player.media_stop` stops only the identified media session.
+- `media_player.media_next_track` and `media_player.media_previous_track` move
+  within the gateway queue.
+- `media_player.clear_playlist` clears queued items according to the gateway's
+  current-session policy.
+- `media_player.media_seek` accepts `seek_position` in seconds. HA only shows
+  seeking when the current source is reported as seekable; live radio streams
+  usually cannot seek.
+- `media_player.volume_set` accepts `volume_level` from `0.0` to `1.0`.
+- `media_player.volume_mute` accepts the boolean `is_volume_muted`.
+
+Pause keeps the decoder and HTTP stream attached, stops consuming decoded audio,
+and sends silence on the SIP media leg. Bounded backpressure preserves playback
+position rather than deliberately jumping to the live edge. A remote streaming
+server may time out a long pause; that produces an explicit playback error and
+requires restarting the source. The gateway bounds a session to two hours and
+finite downloaded media to 64 MiB.
+
+For example:
+
+```yaml
+action: media_player.volume_set
+target:
+  entity_id: media_player.example_phone_radio
+data:
+  volume_level: 0.35
+```
+
+Volume and mute adjust the managed audio stream in the gateway. They do not
+change the handset's physical volume setting or an unrelated phone call.
+Setting them while idle stores a preference without starting a call. A handset
+with a very low physical speaker volume remains quiet even with high stream gain.
+
+The player reports title, artist, album, duration, position, queue length and
+queue index from the gateway. Metadata can come from the request or stream; an
+unlabeled broadcast cannot reliably identify a song by itself. Query strings,
+URL credentials and fragments are removed from the `media_content_id` exposed
+to the HA frontend and recorder. The original playback URL is passed privately
+to the gateway and must not be copied into public logs or documentation.
+
+## Understand state and call ownership
+
+The player changes state only after a fresh gateway observation. A successful
+Play request means accepted, not that sound was heard. **Buffering**, **Playing**
+and **Paused** describe the managed transport; verify audible sound separately
+when commissioning a handset. `media_status` and `blocked_reason` explain
+blocked or failed playback. `active_line` identifies the media session's SIP
+line, independent of later changes to the handset's **Line** selector.
+
+An ordinary call, an alert or another owner can block playback. Media controls
+cannot hang up an unrelated conversation. Each command carries the observed
+session identity; if that identity changes before dispatch, HA refuses the
+command instead of controlling a replacement call. Refresh after an unknown
+outcome rather than repeatedly clicking a transport button.
+
+Manual calls to the numeric radio extensions keep their existing Asterisk
+radio path. Their station title and exact-call Stop remain available in HA.
+Until that legacy radio call ends, it does not gain the managed queue, pause,
+seek or software-volume controls. Stop the old radio session and start a station
+from the HA media player to use the managed transport.
+
+Offline phones stay registered as entities and show **Unavailable**. Reconnection
+restores availability through inventory polling, without automatically replaying
+audio. Separate phones can play separately; this does not imply synchronized
+multiroom audio.
+
+## Troubleshooting and acceptance
+
+1. **Only station selection and Stop appear:** inspect the gateway inventory for
+   `phone.player.v: 1`. Upgrade the gateway/PBX as well as the HA component. A
+   manually dialed legacy radio call intentionally exposes only legacy controls.
+2. **Player unavailable:** check the phone registration and gateway availability.
+   A stale or invalid inventory does not establish call ownership.
+3. **URL accepted but no sound:** check gateway reachability, TLS trust, source
+   authorization/expiry and decoder status. Do not infer playback from acceptance.
+4. **Cannot seek:** inspect `seekable`; many live streams have no fixed position.
+5. **Wrong or missing title:** supply `extra.metadata`, or verify that the stream
+   actually supplies track metadata. Duration can be unknown for live audio.
+6. **Session changed error:** refresh before deciding which current session to
+   control. The guard prevents a stale click from stopping another call.
+7. **Music Assistant buffering:** check its advertised stream URL from the gateway
+   environment and confirm that the Home Assistant player provider selected the
+   existing Cisco entity.
+
+Commission with one deliberate audio request, observed Playing, audible output,
+pause/resume, supported seek, volume/mute, next/previous and exact Stop. Check a
+media-source file and a Music Assistant stream separately, then verify an unrelated
+call survives refused media controls. Record software observations separately
+from human listening confirmation; one handset test does not prove every phone.
+
+## Versioned gateway contract
+
+The optional `phone.player` object sits beside the unchanged legacy `phone.media`.
+Version `v: 1` includes `capabilities`, `state`, `reason`, `session_id`, `line`,
+`source_id`, `title`, `artist`, `album`, `position`, `position_updated_at` (Unix
+seconds), `duration`, `seekable`, `volume_level`, `is_volume_muted`, `queue_index`
+and `queue_length`. Position and duration use seconds; unknown duration is null.
+
+Advertised capabilities map dynamically to HA features: `play`, `url`, `pause`,
+`resume`, `seek`, `volume`, `mute`, `queue`, `next` and `previous`. Seek additionally
+requires `seekable: true`. All version-1 players support exact-session Stop.
+
+The actions are `player_play`, `player_pause`, `player_resume`, `player_stop`,
+`player_next`, `player_previous`, `player_clear_queue`, `player_seek`,
+`player_volume` and `player_mute`. Each uses the existing authenticated,
+idempotent gateway action client. Transport mutations retain the observed
+session ID and its line; idle volume/mute use a null session. `player_play`
+includes `source`, bounded `metadata` and `enqueue`. No action is blindly retried.

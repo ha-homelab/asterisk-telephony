@@ -1,5 +1,21 @@
 # Release notes
 
+## 0.8.0b1
+
+The existing handset media players gain HTTP(S) audio, Home Assistant media-source
+resolution and Music Assistant stream compatibility through a versioned managed
+gateway transport. Capabilities advertised by that gateway enable pause/resume,
+seek for seekable sources, stream volume/mute, queue changes and current-track
+metadata. Devices and entity unique IDs stay unchanged. Legacy radio gateways
+and manually dialed radio calls retain their previous exact-call Stop path.
+
+Both the HA component and the matching gateway/PBX must be upgraded to use these
+controls. The component never turns an accepted request into optimistic Playing
+state, and transport actions retain the observed session and line. See the
+[media guide](media-player.md) for installation, Music Assistant configuration,
+service examples, limits and troubleshooting. Automated tests use modeled local
+gateways; physical sound and deployment are separate acceptance steps.
+
 ## 0.7.0
 
 The stable release retains the implementation accepted in 0.7.0rc1. Only the
