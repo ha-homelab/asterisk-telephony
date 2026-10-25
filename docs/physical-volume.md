@@ -62,3 +62,8 @@ ownership. If a request times out or only some key presses may have applied,
 the result is **outcome unknown**. Do not retry it blindly: inspect the phone's
 actual loudness before deliberately sending another step. The integration sends
 one request and never retries a physical key operation automatically.
+
+From **0.8.0b3**, duplicate JSON members or decoder failures cannot be mistaken
+for a successful gateway reply. An incomplete physical-volume acknowledgement
+also retains the action ID in its error. Use that ID to correlate the existing
+request with gateway logs; it is not an instruction to repeat the key operation.

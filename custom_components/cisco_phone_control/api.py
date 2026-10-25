@@ -5,6 +5,7 @@ import uuid
 
 import aiohttp
 
+from .hardware_volume import acknowledgement as volume_acknowledgement
 from .model import gateway_url, inventory
 
 REFUSAL_DETAILS = {
@@ -27,6 +28,16 @@ REFUSAL_DETAILS = {
 }
 
 
+def unique_object(pairs):
+    """Reject contradictory JSON members before interpreting an acknowledgement."""
+    result = {}
+    for key, value in pairs:
+        if key in result:
+            raise ValueError("Duplicate JSON member")
+        result[key] = value
+    return result
+
+
 async def refusal_detail(response):
     """Read a small error envelope, returning static text only."""
     try:
@@ -36,7 +47,7 @@ async def refusal_detail(response):
             if length > 4096:
                 return None
             chunks.append(chunk)
-        value = json.loads(b"".join(chunks))
+        value = json.loads(b"".join(chunks), object_pairs_hook=unique_object)
         if (isinstance(value, dict) and value.get("status") == "refused"
                 and isinstance(value.get("reason"), str)):
             return REFUSAL_DETAILS.get(value["reason"])
@@ -81,13 +92,13 @@ class GatewayClient:
                         raise GatewayError("invalid response", action_id)
                     chunks.append(chunk)
                 raw = b"".join(chunks)
-                result = json.loads(raw)
+                result = json.loads(raw, object_pairs_hook=unique_object)
                 if not isinstance(result, dict):
                     raise ValueError("Expected object")
                 return result
         except GatewayError:
             raise
-        except (aiohttp.ClientError, asyncio.TimeoutError, ValueError, UnicodeError):
+        except (aiohttp.ClientError, asyncio.TimeoutError, ValueError, UnicodeError, RecursionError):
             raise GatewayError("outcome unknown" if method == "POST" else "unavailable", action_id) from None
 
     async def snapshot(self):
@@ -108,4 +119,12 @@ class GatewayClient:
         result = await self._request("POST", f"/v1/phones/{primary}/{action}", body, key)
         if result.get("status") != "accepted" or result.get("action_id") != key:
             raise GatewayError("outcome unknown", key)
+        if action == "hardware_volume":
+            # Keep the request identity when a nominal success has an invalid
+            # typed acknowledgement. The coordinator projects the valid result.
+            try:
+                volume_acknowledgement(result, body)
+            except ValueError:
+                raise GatewayError("outcome unknown", key,
+                                   detail="Physical volume acknowledgement was incomplete; some keys may have applied") from None
         return result
