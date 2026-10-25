@@ -178,6 +178,11 @@ class PhoneMediaPlayer(PhoneEntity, MediaPlayerEntity):
     async def async_play_media(self, media_type, media_id, **kwargs):
         self._require_available()
         if self.managed:
+            # Resolving a media-source URL may yield while another caller starts
+            # playback or changes the line selector. Keep this request's owner.
+            player = self.player
+            identity = {"session_id": player.get("session_id"),
+                        "line": player.get("line") or self.settings["line"]}
             if not isinstance(media_id, str) or not media_id:
                 raise HomeAssistantError("Choose an audio source")
             if kwargs.get("announce"):
@@ -194,7 +199,7 @@ class PhoneMediaPlayer(PhoneEntity, MediaPlayerEntity):
                 metadata = player_metadata(extra.get("metadata", {}))
             except (ValueError, AttributeError) as error:
                 raise HomeAssistantError("Invalid audio metadata") from error
-            await self._player_action("play", source=media_id, metadata=metadata,
+            await self._player_action("play", identity=identity, source=media_id, metadata=metadata,
                                       enqueue=kwargs.get("enqueue") or "replace")
             return
         if (media_type not in (MediaType.CHANNEL, MediaType.MUSIC)
@@ -218,13 +223,15 @@ class PhoneMediaPlayer(PhoneEntity, MediaPlayerEntity):
         identity = {key: media[key] for key in MEDIA_IDENTITY}
         await self.coordinator.perform(self.primary, "media_stop", identity)
 
-    async def _player_action(self, operation, **values):
+    async def _player_action(self, operation, *, identity=None, **values):
         self._require_available()
         if not self.managed:
             raise HomeAssistantError("This operation requires a managed media session")
-        player = self.player
-        values.update(session_id=player.get("session_id"),
-                      line=player.get("line") or self.settings["line"])
+        if identity is None:
+            player = self.player
+            identity = {"session_id": player.get("session_id"),
+                        "line": player.get("line") or self.settings["line"]}
+        values.update(identity)
         await self.coordinator.perform(self.primary, "player_" + operation, values)
 
     async def async_media_pause(self):
