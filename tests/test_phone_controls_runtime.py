@@ -614,6 +614,102 @@ class PhoneRuntimeTests(unittest.IsolatedAsyncioTestCase):
 
 @unittest.skipUnless(READY, "requires optional pinned Home Assistant runtime")
 class GatewayClientTests(unittest.IsolatedAsyncioTestCase):
+    def client_reply(self, raw, status=200):
+        from custom_components.cisco_phone_control.api import GatewayClient
+        calls = []
+
+        class Content:
+            async def iter_chunked(self, size):
+                for start in range(0, len(raw), size):
+                    yield raw[start:start + size]
+
+        class Context:
+            async def __aenter__(self):
+                return SimpleNamespace(status=status, content=Content())
+
+            async def __aexit__(self, *args):
+                pass
+
+        def request(*args, **kwargs):
+            calls.append((args, kwargs))
+            return Context()
+
+        return GatewayClient(SimpleNamespace(request=request), "http://127.0.0.1:18084", "private-token"), calls
+
+    async def test_ambiguous_json_reply_is_unknown_once_with_private_body_hidden(self):
+        from custom_components.cisco_phone_control.api import GatewayError
+        key = "physical-volume-once"
+        secret = "private-response-must-not-appear"
+        prefix = b'{"status":"accepted","action_id":"physical-volume-once",'
+        cases = (
+            prefix + b'"acknowledged_steps":0,"acknowledged_steps":1}',
+            prefix + b'"acknowledged_steps":0,"\\u0061cknowledged_steps":1}',
+            prefix + b'"extra":{"state":"refused","state":"accepted"}}',
+        )
+        for raw in cases:
+            raw = raw[:-1] + b',"private":"' + secret.encode() + b'"}'
+            client, calls = self.client_reply(raw)
+            with self.subTest(raw_length=len(raw)):
+                with self.assertRaises(GatewayError) as caught:
+                    await client.action("201", "hardware_volume", {
+                        "line": "201", "context": "ringer", "direction": "up", "steps": 1,
+                    }, key)
+                self.assertEqual(caught.exception.status, "outcome unknown")
+                self.assertEqual(caught.exception.action_id, key)
+                self.assertIn("do not retry blindly", str(caught.exception))
+                self.assertNotIn(secret, str(caught.exception))
+                self.assertNotIn("private-token", str(caught.exception))
+                self.assertEqual(len(calls), 1)
+                self.assertEqual(calls[0][1]["json"]["idempotency_key"], key)
+
+    async def test_json_recursion_failure_is_sanitized_for_reads_and_actions(self):
+        from custom_components.cisco_phone_control.api import GatewayError
+        # Decoder depth limits differ across supported Python versions. Inject
+        # its documented failure rather than depending on an arbitrary depth.
+        for method in ("GET", "POST"):
+            client, calls = self.client_reply(b"{}")
+            key = "physical-volume-once" if method == "POST" else None
+            with self.subTest(method=method), patch(
+                "custom_components.cisco_phone_control.api.json.loads",
+                side_effect=RecursionError("private-decoder-detail"),
+            ):
+                with self.assertRaises(GatewayError) as caught:
+                    await client._request(method, "/v1/phones", action_id=key)
+                self.assertEqual(caught.exception.status, "outcome unknown" if key else "unavailable")
+                self.assertEqual(caught.exception.action_id, key)
+                self.assertNotIn("private-decoder-detail", str(caught.exception))
+                self.assertEqual(len(calls), 1)
+
+    async def test_duplicate_refusal_members_do_not_choose_a_helpful_reason(self):
+        from custom_components.cisco_phone_control.api import GatewayError
+        client, calls = self.client_reply(
+            b'{"status":"refused","reason":"private","reason":"phone_busy"}', 409)
+        with self.assertRaises(GatewayError) as caught:
+            await client.action("201", "hardware_volume", {}, "one-key")
+        self.assertEqual(str(caught.exception), "Gateway refused; action one-key; do not retry blindly")
+        self.assertEqual(len(calls), 1)
+
+    async def test_hardware_acknowledgement_failure_retains_exact_action_id(self):
+        from custom_components.cisco_phone_control.api import GatewayError
+        values = {"line": "201", "context": "ringer", "direction": "up", "steps": 2}
+        reply = {"status": "accepted", "action_id": "physical-once", "context": "ringer",
+                 "direction": "up", "requested_steps": 2, "acknowledged_steps": 2,
+                 "level_known": False, "volume_level": None, "audio_output": "contextual",
+                 "physical_context_verified": False}
+        for change in ({"acknowledged_steps": 1}, {"requested_steps": True},
+                       {"physical_context_verified": 0}, {"volume_level": 0.5}):
+            client, calls = self.client_reply(json.dumps({**reply, **change}).encode())
+            with self.subTest(change=change):
+                with self.assertRaises(GatewayError) as caught:
+                    await client.action("201", "hardware_volume", values, "physical-once")
+                self.assertEqual(caught.exception.action_id, "physical-once")
+                self.assertIn("outcome unknown", str(caught.exception))
+                self.assertIn("some keys may have applied", str(caught.exception))
+                self.assertEqual(len(calls), 1)
+        client, calls = self.client_reply(json.dumps(reply).encode())
+        self.assertEqual(await client.action("201", "hardware_volume", values, "physical-once"), reply)
+        self.assertEqual(len(calls), 1)
+
     async def test_http_refusal_reasons_are_static_bounded_and_never_retried(self):
         import aiohttp
         from aiohttp import web

@@ -1,5 +1,15 @@
 # Release notes
 
+## 0.8.0b3
+
+Rejects duplicate JSON response members instead of trusting the last value,
+including nested and escaped duplicate names. JSON decoder recursion failures
+become sanitized gateway errors. Incomplete physical-volume acknowledgements
+retain the original action ID and report an unknown outcome without retrying.
+Entity IDs, saved settings, media controls and the physical-volume service schema
+are unchanged. Validation uses local fixtures; this release does not establish
+new physical-phone or audio acceptance.
+
 ## 0.8.0b2
 
 Adds capability-gated physical ringer/call volume up/down buttons and the
