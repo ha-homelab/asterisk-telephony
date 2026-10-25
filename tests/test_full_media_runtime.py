@@ -59,6 +59,42 @@ class FullMediaRuntimeTests(unittest.IsolatedAsyncioTestCase):
         resolve.assert_awaited_once_with(self.hass, "media-source://media_source/local/file.mp3", self.player.entity_id)
         self.assertEqual(self.client.action.await_args.args[2]["source"], url)
 
+    async def test_media_resolution_cannot_replace_a_new_session(self):
+        from homeassistant.exceptions import HomeAssistantError
+        url = "https://media.example.test/resolved.mp3"
+
+        async def resolve(*_args):
+            # Another caller starts playback while HA resolves this request.
+            self.activate()
+            self.data["phones"][0]["player"]["session_id"] = "87654321-1234-4234-8234-123456789abc"
+            self.publish()
+            return SimpleNamespace(url=url, mime_type="audio/mpeg")
+
+        with patch("custom_components.cisco_phone_control.media_player.media_source.async_resolve_media",
+                   new=resolve), patch(
+                       "custom_components.cisco_phone_control.media_player.async_process_play_media_url",
+                       side_effect=lambda _hass, value: value):
+            for active in (False, True):
+                self.data = full_media_snapshot(active=active)
+                self.publish()
+                with self.subTest(active=active), self.assertRaisesRegex(HomeAssistantError, "session changed"):
+                    await self.player.async_play_media("music", "media-source://media_source/local/file.mp3")
+        self.client.action.assert_not_awaited()
+
+    async def test_media_resolution_preserves_the_requested_idle_line(self):
+        url = "https://media.example.test/resolved.mp3"
+
+        async def resolve(*_args):
+            self.c.settings["201"]["line"] = "202"
+            return SimpleNamespace(url=url, mime_type="audio/mpeg")
+
+        with patch("custom_components.cisco_phone_control.media_player.media_source.async_resolve_media",
+                   new=resolve), patch(
+                       "custom_components.cisco_phone_control.media_player.async_process_play_media_url",
+                       side_effect=lambda _hass, value: value):
+            await self.player.async_play_media("music", "media-source://media_source/local/file.mp3")
+        self.assertEqual(self.client.action.await_args.args[2]["line"], "201")
+
     async def test_metadata_position_and_url_tokens_do_not_leak_into_state(self):
         self.activate()
         observed = self.data["phones"][0]["player"]
@@ -114,12 +150,14 @@ class FullMediaRuntimeTests(unittest.IsolatedAsyncioTestCase):
             key: identity[key] for key in ("source", "line", "channel", "uniqueid")}, None)
 
     async def test_idle_volume_and_mute_do_not_start_audio(self):
-        await self.player.async_set_volume_level(.3)
-        self.client.action.assert_awaited_with("201", "player_volume", {
-            "session_id": None, "line": "201", "volume_level": .3}, None)
-        await self.player.async_mute_volume(True)
-        self.client.action.assert_awaited_with("201", "player_mute", {
-            "session_id": None, "line": "201", "is_volume_muted": True}, None)
+        for line in ("201", "202"):
+            self.c.settings["201"]["line"] = line
+            await self.player.async_set_volume_level(.3)
+            self.client.action.assert_awaited_with("201", "player_volume", {
+                "session_id": None, "line": line, "volume_level": .3}, None)
+            await self.player.async_mute_volume(True)
+            self.client.action.assert_awaited_with("201", "player_mute", {
+                "session_id": None, "line": line, "is_volume_muted": True}, None)
         self.assertEqual(self.player.state, "idle")
 
     async def test_invalid_audio_and_unsupported_features_never_dispatch(self):

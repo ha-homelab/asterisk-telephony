@@ -86,6 +86,12 @@ resolved again; a queued signed URL must remain valid until the item starts.
 Embedded `user:password@host` URLs, non-HTTP protocols and video requests are
 rejected. This is audio playback, not video rendering.
 
+Before resolving a media-source reference, HA captures the current session and
+line. Changing the **Line** selector while resolution is pending does not retarget
+that request. If another session starts before dispatch, the pending request is
+refused without controlling the new session. New idle volume and mute commands
+continue to use the currently selected line.
+
 ## Music Assistant
 
 Use Music Assistant's **Home Assistant player provider** and enable the existing
