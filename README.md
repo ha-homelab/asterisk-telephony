@@ -3,8 +3,10 @@
 Monitor SIP phones, control Cisco handsets, schedule timers and weekday alarms,
 send text or pictures, and reach Assist through extension **630**.
 
-The **0.8.0b3** component hardens gateway reply validation and preserves the action
-ID when a physical-volume acknowledgement is incomplete. It retains
+The **0.8.0b4** component preserves a media request's session and selected line
+while Home Assistant resolves its source URL. It refuses a stale request if a
+new session has started, while idle volume and mute still use the selected line.
+It retains strict gateway reply validation and
 [physical phone volume buttons](docs/physical-volume.md) alongside managed audio
 playback, queues and transport controls. It requires the matching gateway;
 older radio-only gateways retain their compatible behavior.
