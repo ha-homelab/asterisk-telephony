@@ -1,5 +1,19 @@
 # Release notes
 
+## 0.8.0b4
+
+Captures the media session and selected line before resolving a Home Assistant
+media-source reference. A line change cannot redirect that pending request, and
+a request resolved after another session starts is refused instead of replacing
+that session. Idle volume and mute still use the current selected line.
+
+The runtime correction was reviewed in #13. This candidate changes only the
+component version and release documentation. Existing entity IDs, configuration,
+gateway protocol and action acknowledgement handling are unchanged. Run the
+contract suite and both supported Home Assistant runtime jobs on the final
+release commit before packaging. Physical phone and audio acceptance remain
+separate; publishing this package does not install or activate it.
+
 ## 0.8.0b3
 
 Rejects duplicate JSON response members instead of trusting the last value,
