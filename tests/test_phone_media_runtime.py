@@ -1,5 +1,4 @@
 """Real HA entity/service tests using only a modeled local gateway."""
-import asyncio
 import copy
 import importlib.util
 from pathlib import Path

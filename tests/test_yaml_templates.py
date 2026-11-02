@@ -38,8 +38,8 @@ class TemplateTests(unittest.TestCase):
         ]:
             with self.subTest(channel=channel, line=line, device_state=device_state, desc=desc, current_channel=current_channel):
                 env=Environment()
-                env.globals['states']=lambda e: device_state if e == 'sensor.example_201_state' else line
-                env.globals['state_attr']=lambda e,k: current_channel if k=='Channel' else desc
+                env.globals['states']=lambda e, device_state=device_state, line=line: device_state if e == 'sensor.example_201_state' else line
+                env.globals['state_attr']=lambda e,k,current_channel=current_channel,desc=desc: current_channel if k=='Channel' else desc
                 self.assertEqual(env.from_string(seq[1]['value_template']).render(channel=channel), str(expected))
     def test_dtmf_guard_rejects_startup_duplicates_other_digits_and_contexts(self):
         condition = render.build(config())['asterisk.yaml']['automation'][0]['conditions'][0]['value_template']
