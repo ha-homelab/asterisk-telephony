@@ -69,6 +69,7 @@ class HandsFreeCoordinator(DataUpdateCoordinator):
                 if candidate["session_id"] == hands["session_id"]:
                     voice = candidate
             except Exception:
+                # Missing or invalid progress must never imply voice readiness.
                 pass
         return {"hands_free": hands, "voice": voice, "actual": actual_status(hands, voice),
                 "observed_at": observed_at}
@@ -92,6 +93,7 @@ class HandsFreeCoordinator(DataUpdateCoordinator):
             async with asyncio.timeout(POLL_TIMEOUT):
                 await asyncio.gather(*(observe(phone) for phone in phones))
         except TimeoutError:
+            # Keep completed observations; stalled phones remain unavailable.
             pass
         return result
 

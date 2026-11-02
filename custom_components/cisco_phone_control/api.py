@@ -52,6 +52,7 @@ async def refusal_detail(response):
                 and isinstance(value.get("reason"), str)):
             return REFUSAL_DETAILS.get(value["reason"])
     except (aiohttp.ClientError, asyncio.TimeoutError, ValueError, UnicodeError, RecursionError):
+        # Optional refusal details fall back to a sanitized status-only error.
         pass
     return None
 
