@@ -1,5 +1,19 @@
 # Release notes
 
+## 0.8.0b5
+
+Maintenance beta with unchanged component runtime behavior from 0.8.0b4.
+Repository maintenance adds CodeQL coverage for Python and GitHub Actions,
+binds template-test callbacks to their current inputs, and documents existing
+fallback handling. It also excludes local instruction files from Git.
+The component payload changes only explanatory comments and its version.
+
+Existing entity IDs, configuration, gateway protocol, media controls and action
+acknowledgement handling are unchanged. Run the contract suite, both supported
+Home Assistant runtime jobs and CodeQL on the final release commit before
+packaging. Physical phone and audio acceptance remain separate; publishing this
+package does not install or activate it.
+
 ## 0.8.0b4
 
 Captures the media session and selected line before resolving a Home Assistant
