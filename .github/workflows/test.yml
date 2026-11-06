@@ -1,6 +1,8 @@
 name: Contract tests
 on:
   push:
+    branches: [main]
+    tags: ['**']
   pull_request:
 permissions:
   contents: read
