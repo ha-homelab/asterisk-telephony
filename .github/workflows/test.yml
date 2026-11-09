@@ -8,7 +8,7 @@ permissions:
   contents: read
 jobs:
   scope:
-    uses: victron-venus/venus-os-ci-toolkit/.github/workflows/change-scope.yml@b07180c5b397133fd8ba296181eb630fd603d468 # main
+    uses: victron-venus/venus-os-ci-toolkit/.github/workflows/change-scope.yml@53ec91e4409900013d37a286a1db09d8910772be # main
     with:
       force-full: false
   test:
