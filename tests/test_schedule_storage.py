@@ -93,7 +93,8 @@ class ScheduleStorageTests(unittest.IsolatedAsyncioTestCase):
             "key": "cisco_phone_control.synthetic", "data": payload,
         })
         self.assertEqual(Path(self.store.path).stat().st_mode & 0o777, 0o600)
-        self.assertTrue(self.store._atomic_writes)
+        storage_io = getattr(self.store, "_io", self.store)
+        self.assertTrue(storage_io._atomic_writes)
         reader = Store(self.hass, 1, self.store.key)
         self.assertEqual(await reader.async_load(), payload)
 

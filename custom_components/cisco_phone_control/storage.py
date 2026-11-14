@@ -45,6 +45,22 @@ class ScheduleStore(Store):
             raise ScheduleStorageError("Schedule storage is read-only")
         await super().async_save(data)
 
+    def _write_prepared_data(self, mode, serialized) -> None:
+        """Keep the acknowledged executor seam across HA's Store I/O split."""
+        if (storage_io := getattr(self, "_io", None)) is not None:
+            # HA 2026.11 moved the same atomic/private file writer into this
+            # object. Do not use async_write: HA owns and cancels its Future.
+            storage_io._write(mode, serialized)
+        else:
+            super()._write_prepared_data(mode, serialized)
+
+    def _write_data(self, data) -> None:
+        """Serialize inside the same privately owned executor completion."""
+        if "data_func" in data:
+            data["data"] = data.pop("data_func")()
+        mode, serialized = json_helper.prepare_save_json(data, encoder=self._encoder)
+        self._write_prepared_data(mode, serialized)
+
     async def _async_write_data(self, data) -> None:
         try:
             # Match Store's serialization choices and existing file writer.
