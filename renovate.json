@@ -20,5 +20,17 @@
     "managerFilePatterns": [
       "/(^|/)([^/]*[-_])?requirements[^/]*\\.(txt|pip)$/"
     ]
-  }
+  },
+  "packageRules": [
+    {
+      "description": "This named compatibility target deliberately exercises HA 2026.10.0 and its matching dependency pins; current HA updates belong in requirements-runtime.txt.",
+      "matchManagers": [
+        "pip_requirements"
+      ],
+      "matchFileNames": [
+        "requirements-runtime-2026.10.0.txt"
+      ],
+      "enabled": false
+    }
+  ]
 }
