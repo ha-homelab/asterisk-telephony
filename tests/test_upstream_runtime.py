@@ -42,6 +42,9 @@ class UpstreamRuntimeTests(unittest.IsolatedAsyncioTestCase):
         self.temp = tempfile.TemporaryDirectory()
         self.hass = HomeAssistant(self.temp.name)
         self.hass.config_entries = ConfigEntries(self.hass, {})
+        await self.hass.config_entries.async_initialize()
+        from homeassistant.helpers import frame
+        frame.async_setup(self.hass)
         self.entry = ConfigEntry(
             domain="asterisk", title="Synthetic AMI", unique_id="127.0.0.1:5038",
             version=1, minor_version=1, source="user", options={},

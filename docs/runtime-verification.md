@@ -1,4 +1,28 @@
-# Compatibility verification with Home Assistant 2026.10.0 and 2026.10.2
+# Home Assistant compatibility verification
+
+## Current and legacy runtime profiles
+
+The current CI target is Home Assistant **2026.11.1**; the separate named
+compatibility target remains **2026.10.0**. On 13 November 2026, all seven
+runtime groups passed in disposable Python 3.14.7 environments on both targets:
+135 runtime tests per version, including real service dispatch, the unchanged
+upstream integration, and schedule serialization, filesystem-failure,
+shutdown and cancellation behavior. The complete 270-test suite also passed
+with the current Home Assistant runtime installed.
+
+The fixtures initialize ConfigEntries and HA's frame helper before loading
+registries or entry setup. ScheduleStore retains an acknowledged, privately
+owned executor completion on both sides of HA 2026.11's Store I/O split; it
+uses the upstream private/atomic writer and keeps failures observable. Existing
+storage envelopes, settings, credentials and gateway protocols are unchanged.
+The tests use synthetic in-process gateways and no physical phone calls.
+No running Home Assistant instance is changed by this qualification.
+
+Use `requirements-runtime.txt` for the current target and
+`requirements-runtime-2026.10.0.txt` for the legacy target in the reproduction
+commands below. Both required hosted runtime jobs must pass before merging.
+
+## Earlier qualification history
 
 On October 16, 2026, the unchanged upstream TECH7Fox `v1.0.5`, commit
 `65ea9d637a58d6edb3b2bc9e8a6f90de896a9b3e`, was tested in a disposable Python
@@ -8,8 +32,8 @@ archive verified against [upstream.lock.json](../upstream.lock.json).
 The original four tests in [test_upstream_runtime.py](../tests/test_upstream_runtime.py) passed.
 
 On October 17, the same suite passed with `homeassistant==2026.10.0` before
-installation on that HA version. CI checks both versions in separate isolated
-environments. To reproduce the 2026.10.0 run, substitute
+installation on that HA version. The original CI checked both versions in separate
+isolated environments. To reproduce the 2026.10.0 run, substitute
 `requirements-runtime-2026.10.0.txt` for `requirements-runtime.txt` below.
 
 The same suite also passed on Linux amd64 in

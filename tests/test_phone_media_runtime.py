@@ -25,6 +25,9 @@ class PhoneMediaRuntimeTests(unittest.IsolatedAsyncioTestCase):
         self.tmp = tempfile.TemporaryDirectory()
         self.hass = HomeAssistant(self.tmp.name)
         self.hass.config_entries = ConfigEntries(self.hass, {})
+        await self.hass.config_entries.async_initialize()
+        from homeassistant.helpers import frame
+        frame.async_setup(self.hass)
         loader.async_setup(self.hass)
         self.entry = ConfigEntry(domain="cisco_phone_control", title="Synthetic gateway",
                                  unique_id="http://127.0.0.1:18084", version=1, minor_version=1,
